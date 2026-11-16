@@ -312,6 +312,17 @@ function feuillePaiement(ctx) {
     return [{ devise: 'USD', montant: u, mode }, { devise: 'CDF', montant: fc, mode }];
   }
 
+  // Ce que le client doit donner, selon la devise choisie (montre clairement le choix fait).
+  const aPayer = h('div', { class: 'a-payer', 'aria-live': 'polite' });
+  function majAPayer() {
+    aPayer.hidden = recu === 'mixte';
+    if (recu === 'mixte') return;
+    aPayer.replaceChildren(
+      h('span', { class: 'texte-2' }, 'Le client donne'),
+      h('strong', { class: 'chiffre-m' }, fm(recu === dev ? total : equivalent, recu)));
+  }
+  majAPayer();
+
   const payer = h('button', { class: 'btn btn-principal btn-grand btn-bloc' }, icone('coche', 22), 'Payé');
   payer.addEventListener('click', enCours(payer, async () => {
     try {
@@ -334,8 +345,10 @@ function feuillePaiement(ctx) {
         segment([{ id: 'USD', libelle: 'Dollars' }, { id: 'CDF', libelle: 'Francs' }, { id: 'mixte', libelle: '$ + FC' }], recu, (r) => {
           recu = r;
           zoneMixte.hidden = r !== 'mixte';
+          majAPayer();
           if (r === 'mixte') partieUSD.entree.focus();
         }, { libelle: 'Devise reçue' })),
+      aPayer,
       zoneMixte,
       payer,
       h('button', { class: 'btn btn-secondaire btn-grand btn-bloc', onclick: () => { f.fermer(); feuilleCredit(ctx, total); } }, 'À crédit')),

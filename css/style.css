@@ -61,6 +61,7 @@
 /* ---------- Base ---------- */
 
 *, *::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; } /* un élément masqué reste masqué, quelle que soit sa classe */
 html {
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
@@ -165,6 +166,11 @@ body.avec-panier #app { padding-bottom: calc(var(--hauteur-nav) + env(safe-area-
 }
 .btn-rond:disabled { opacity: 0.35; }
 .duo { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s1); }
+.a-payer {
+  display: flex; align-items: baseline; justify-content: space-between; gap: var(--s2);
+  padding: 12px var(--s2); border-radius: var(--rayon-petit); background: var(--carte); box-shadow: inset 0 0 0 1px var(--ligne);
+}
+.a-payer[hidden] { display: none; }
 .duo-montants { gap: 12px; }
 .duo-montants .champ-libelle { font-size: 14px; }
 .duo-montants .saisie-montant .saisie { font-size: 20px; padding-right: 40px; padding-left: 12px; }
@@ -208,8 +214,8 @@ select.saisie { background-image: none; }
   font-size: 15px; font-weight: 600; color: var(--texte-2);
   transition: background-color 150ms ease, color 150ms ease;
 }
-.segment-choix[aria-checked="true"] { background: var(--carte); color: var(--texte); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
-@media (prefers-color-scheme: dark) { .segment-choix[aria-checked="true"] { background: #3A383E; } }
+/* Choix actif bien visible (foncé), pour qu'on voie tout de suite ce qui est sélectionné. */
+.segment-choix[aria-checked="true"] { background: var(--texte); color: var(--fond); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18); }
 
 .puces { display: flex; flex-wrap: wrap; gap: var(--s1); }
 .puces-defilantes {
