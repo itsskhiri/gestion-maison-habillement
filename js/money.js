@@ -31,6 +31,13 @@ export function convertir(unites, de, vers, taux) {
   throw new Error('Devise inconnue');
 }
 
+// Écart d'arrondi maximal (dans la devise `vers`) quand un montant saisi dans la devise `de`
+// est converti : un centime vaut jusqu'à taux/100 FC, un franc vaut moins d'un centime.
+export function toleranceConversion(de, vers, taux) {
+  if (de === vers) return 0;
+  return de === 'USD' && vers === 'CDF' ? Math.ceil(taux / 100) : 1;
+}
+
 // Lit une saisie (« 12,50 », « 25 000 », « 12.5 ») et renvoie des unités entières, ou null.
 export function lireMontant(texte, devise) {
   const t = String(texte ?? '').replace(/[\s  ]/g, '').replace(',', '.');

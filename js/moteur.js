@@ -6,7 +6,7 @@
 //      enregistrements touchés par table : la couche api.js les écrit dans UNE transaction.
 // Cette logique est la même que celle des fonctions SQL PostgreSQL de l'étape 2.
 
-import { convertir, formater, DEVISES } from './money.js';
+import { convertir, formater, toleranceConversion, DEVISES } from './money.js';
 import { cleJour, heureNumero, maintenantIso } from './temps.js';
 import { CATEGORIES, TYPES_DEPENSE, MODES, categorie as infoCategorie, typeDepense } from './reference.js';
 
@@ -277,7 +277,8 @@ export function creerVente(etat, entree, opts) {
       mode: verifMode(e.mode || 'cash'),
     }));
     const contreValeur = encaissements.reduce((s, e) => s + convertir(e.montant, e.devise, devise, taux), 0);
-    const tolerance = encaissements.filter((e) => e.devise !== devise).length; // arrondis de conversion
+    // Marge d'arrondi des conversions (au plus un centime ou un franc par partie dans l'autre devise).
+    const tolerance = encaissements.reduce((s, e) => s + toleranceConversion(e.devise, devise, taux), 0);
     if (Math.abs(contreValeur - total) > tolerance) echec('Le montant reçu ne correspond pas au total de la vente.');
   } else if (pay.type === 'credit') {
     ({ client, nouveau: nouveauClient } = resoudreClient(etat, pay.client, quand));

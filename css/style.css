@@ -165,12 +165,19 @@ body.avec-panier #app { padding-bottom: calc(var(--hauteur-nav) + env(safe-area-
 }
 .btn-rond:disabled { opacity: 0.35; }
 .duo { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s1); }
+.duo-montants { gap: 12px; }
+.duo-montants .champ-libelle { font-size: 14px; }
+.duo-montants .saisie-montant .saisie { font-size: 20px; padding-right: 40px; padding-left: 12px; }
+.duo-montants .saisie-suffixe { right: 12px; }
 
 /* ---------- Champs ---------- */
 
 .champ { display: flex; flex-direction: column; gap: 6px; }
 .champ-libelle { font-size: 15px; font-weight: 600; color: var(--texte); }
 .champ-aide { font-size: 13px; color: var(--texte-2); }
+.champ-aide.positif { color: var(--positif); font-weight: 600; font-size: 15px; }
+.champ-aide.negatif { color: var(--negatif); font-weight: 600; font-size: 15px; }
+.champ-aide.attention { color: var(--attention); font-weight: 600; font-size: 15px; }
 .saisie {
   width: 100%; min-height: 52px; padding: 0 var(--s2);
   border: 0; border-radius: var(--rayon-petit);

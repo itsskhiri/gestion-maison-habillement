@@ -6,7 +6,7 @@ import {
   h, icone, logo, pastille, boutonProfil, enTete, fm, num, puces, segment, saisie, champ, champMontant,
   ouvrirFeuille, confirmer, toast, erreur, vibrer, partager, enCours, etatVide, optionsModes, vider,
 } from './ui.js';
-import { convertir, formater, lireMontant, lireEntier, versSaisie, autreDevise } from './money.js';
+import { convertir, formater, lireMontant, lireEntier, versSaisie, autreDevise, toleranceConversion } from './money.js';
 import { CATEGORIES, modePaiement } from './reference.js';
 import { aujourdhui, heure, cleJour, libelleJour, dateNumerique } from './temps.js';
 import { ouvrirFormulaireArticle } from './articles.js';
@@ -252,28 +252,63 @@ function feuillePaiement(ctx) {
   let recu = dev;
 
   const totalUSD = convertir(total, dev, 'USD', t);
-  const resteFC = h('p', { class: 'champ-aide' });
-  const partieUSD = champMontant({
-    devise: 'USD', libelle: 'Partie payée en dollars', avecDevise: false,
-    onSaisie: () => {
-      const fc = partieFrancs();
-      resteFC.textContent = fc > 0 ? `Le reste en francs : ${formater(fc, 'CDF')}` : '';
-    },
-  });
-  const zoneMixte = h('div', { class: 'pile-serree', hidden: true }, partieUSD.el, resteFC);
+  // Paiement mélangé : deux champs. Quand on remplit l'un, l'autre se complète avec le reste ;
+  // les deux restent modifiables et un message dit si le compte est bon.
+  const totalFC = convertir(total, dev, 'CDF', t);
+  const bilanMixte = h('p', { class: 'champ-aide', 'aria-live': 'polite' });
+  const partieUSD = champMontant({ devise: 'USD', libelle: 'Combien en dollars ?', avecDevise: false, onSaisie: () => completer('USD') });
+  const partieFC = champMontant({ devise: 'CDF', libelle: 'Combien en francs ?', avecDevise: false, onSaisie: () => completer('CDF') });
+  const zoneMixte = h('div', { class: 'pile-serree', hidden: true },
+    h('div', { class: 'duo duo-montants' }, partieUSD.el, partieFC.el), bilanMixte);
 
-  function partieFrancs() {
-    const u = partieUSD.lire();
-    if (!u || u >= totalUSD) return 0;
-    return dev === 'USD' ? convertir(total - u, 'USD', 'CDF', t) : total - convertir(u, 'USD', 'CDF', t);
+  // Un champ rempli à la main n'est plus jamais réécrit automatiquement (sauf si on le vide).
+  const saisiMain = { USD: false, CDF: false };
+  function completer(source) {
+    const champSource = source === 'USD' ? partieUSD : partieFC;
+    saisiMain[source] = champSource.entree.value.trim() !== '';
+    if (source === 'USD' && !saisiMain.CDF) {
+      const u = partieUSD.lire();
+      partieFC.definir(u && u < totalUSD ? (dev === 'USD' ? convertir(total - u, 'USD', 'CDF', t) : total - convertir(u, 'USD', 'CDF', t)) : null);
+    } else if (source === 'CDF' && !saisiMain.USD) {
+      const fc = partieFC.lire();
+      partieUSD.definir(fc && fc < totalFC ? (dev === 'USD' ? total - convertir(fc, 'CDF', 'USD', t) : convertir(total - fc, 'CDF', 'USD', t)) : null);
+    }
+    majBilan();
+  }
+
+  // Écart entre ce qui est reçu et le total (dans la devise de la vente), et marge d'arrondi permise.
+  function ecartMixte() {
+    const u = partieUSD.lire() || 0;
+    const fc = partieFC.lire() || 0;
+    const recuTotal = convertir(u, 'USD', dev, t) + convertir(fc, 'CDF', dev, t);
+    const marge = (u && dev !== 'USD' ? toleranceConversion('USD', dev, t) : 0) + (fc && dev !== 'CDF' ? toleranceConversion('CDF', dev, t) : 0);
+    return { u, fc, ecart: recuTotal - total, marge };
+  }
+
+  function majBilan() {
+    const { u, fc, ecart, marge } = ecartMixte();
+    if (!u && !fc) { bilanMixte.textContent = ''; return; }
+    if (Math.abs(ecart) <= marge) {
+      bilanMixte.className = 'champ-aide positif';
+      bilanMixte.textContent = `Le compte est bon : ${formater(u, 'USD')} + ${formater(fc, 'CDF')} = ${formater(total, dev)}`;
+    } else if (ecart < 0) {
+      bilanMixte.className = 'champ-aide negatif';
+      bilanMixte.textContent = `Il manque ${formater(-ecart, dev)}`;
+    } else {
+      bilanMixte.className = 'champ-aide attention';
+      bilanMixte.textContent = `C'est ${formater(ecart, dev)} de trop`;
+    }
   }
 
   function encaissements() {
     if (recu === dev) return [{ devise: dev, montant: total, mode }];
     if (recu === autre) return [{ devise: autre, montant: equivalent, mode }];
-    const u = partieUSD.lire();
-    const fc = partieFrancs();
-    if (!u || fc <= 0) { partieUSD.signalerErreur(); throw new api.ErreurMetier(`Saisis la partie en dollars (moins de ${formater(totalUSD, 'USD')}).`); }
+    const { u, fc, ecart, marge } = ecartMixte();
+    if (!u) { partieUSD.signalerErreur(); throw new api.ErreurMetier('Saisis combien le client paie en dollars.'); }
+    if (!fc) { partieFC.signalerErreur(); throw new api.ErreurMetier('Saisis combien le client paie en francs.'); }
+    if (Math.abs(ecart) > marge) {
+      throw new api.ErreurMetier(ecart < 0 ? `Il manque ${formater(-ecart, dev)} pour payer le total.` : `C'est ${formater(ecart, dev)} de trop : corrige les montants.`);
+    }
     return [{ devise: 'USD', montant: u, mode }, { devise: 'CDF', montant: fc, mode }];
   }
 

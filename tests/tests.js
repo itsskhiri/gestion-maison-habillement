@@ -118,6 +118,25 @@ test('Vente : paiement mixte dollars + francs', () => {
   }), 'ne correspond pas');
 });
 
+test('Paiement mixte : francs saisis d’abord, dollars complétés (arrondi au centime accepté)', () => {
+  const { e, robe } = boutique();
+  // Total 100 000 FC ; le client donne 40 000 FC, le reste 60 000 FC = 21,05 $ (arrondi)
+  const u = convertir(60000, 'CDF', 'USD', 2850);
+  egal(u, 2105);
+  m.creerVente(e, {
+    lignes: [{ article_id: robe.id, quantite: 2 }],
+    paiement: { type: 'payee', encaissements: [{ devise: 'USD', montant: u, mode: 'cash' }, { devise: 'CDF', montant: 40000, mode: 'cash' }] },
+  });
+  egal(solde(e).USD, 2105);
+  egal(solde(e).CDF, 40000);
+  egal(m.statsPeriode(e, '0000-01-01', '9999-12-31').encaisse, 100000, 'encaissé = total exact');
+  // Mais un écart réel (1 $ de moins) est refusé
+  refuse(() => m.creerVente(e, {
+    lignes: [{ article_id: robe.id, quantite: 1 }],
+    paiement: { type: 'payee', encaissements: [{ devise: 'USD', montant: 1000, mode: 'cash' }, { devise: 'CDF', montant: 20000, mode: 'cash' }] },
+  }), 'ne correspond pas');
+});
+
 test('Stock jamais négatif', () => {
   const { e, jean } = boutique();
   refuse(() => m.creerVente(e, { lignes: [{ article_id: jean.id, quantite: 3 }] }), 'Stock insuffisant');
