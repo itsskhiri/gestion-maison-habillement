@@ -318,9 +318,30 @@ body.sans-nav .nav { display: none; }
   padding: 10px 10px 10px 16px; border-radius: 20px;
   background: var(--texte); color: var(--fond); box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
 }
-.barre-panier-resume { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; border: 0; background: none; color: inherit; text-align: left; padding: 4px 0; }
-.barre-panier-resume .legende { color: inherit; opacity: 0.7; }
+.barre-panier-resume {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px;
+  border: 0; border-radius: 14px; background: none; color: inherit; text-align: left; padding: 4px 8px 4px 0;
+}
+.barre-panier-resume:active { background: rgba(255, 255, 255, 0.08); }
+.barre-panier-icone { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 50%; background: rgba(255, 255, 255, 0.12); flex: none; }
+@media (prefers-color-scheme: dark) { .barre-panier-icone { background: rgba(0, 0, 0, 0.1); } }
+.barre-panier-nombre {
+  position: absolute; top: -4px; right: -6px; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--accent); color: var(--sur-accent); font-size: 13px; font-weight: 700;
+}
+.barre-panier-textes { display: flex; flex-direction: column; min-width: 0; }
+.barre-panier-lien { white-space: nowrap; font-size: 14px; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; opacity: 0.9; }
 .barre-panier-total { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.carte-article-conteneur { position: relative; display: flex; }
+.carte-article-conteneur > .carte-article { flex: 1; min-width: 0; }
+.retirer-un {
+  position: absolute; top: 6px; right: 46px; width: 36px; height: 36px; border: 0; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--carte-2); color: var(--texte); box-shadow: inset 0 0 0 1px var(--ligne-forte);
+  animation: apparaitre 180ms ease;
+}
+.retirer-un:active { background: var(--ligne-forte); }
 .barre-panier .btn { min-height: 52px; background: var(--fond); color: var(--texte); }
 
 /* ---------- Listes ---------- */

@@ -79,7 +79,7 @@ export async function afficher(racine) {
     const dansPanier = etatEcran.panier.get(a.id)?.quantite || 0;
     const epuise = a.quantite <= 0;
     const bas = !epuise && a.quantite <= p.seuil_stock_bas;
-    const el = h('button', {
+    const carte = h('button', {
       class: `carte-article${epuise ? ' epuise' : ''}${dansPanier ? ' dans-panier' : ''}`,
       'aria-label': `${a.nom}, ${formater(a.prix, a.devise)}${epuise ? ', épuisé' : `, stock ${a.quantite}`}${dansPanier ? `, ${dansPanier} dans le panier` : ''}`,
       'aria-disabled': epuise ? 'true' : null,
@@ -91,8 +91,21 @@ export async function afficher(racine) {
       h('span', { class: 'carte-article-prix' }, formater(a.prix, a.devise)),
       epuise ? h('span', { class: 'badge badge-zero' }, 'Épuisé') : bas ? h('span', { class: 'badge badge-bas' }, `Reste ${a.quantite}`) : null),
     dansPanier ? h('span', { class: 'compteur', 'aria-hidden': 'true' }, String(dansPanier)) : null);
+    // Bouton « − » sur la carte : corrige un toucher en trop sans ouvrir le panier.
+    const el = h('div', { class: 'carte-article-conteneur' }, carte,
+      dansPanier ? h('button', { class: 'retirer-un', 'aria-label': `Retirer un « ${a.nom} » du panier`, onclick: () => retirer(a) }, icone('moins', 20)) : null);
     cartes.set(a.id, el);
     return el;
+  }
+
+  function retirer(a) {
+    const x = etatEcran.panier.get(a.id);
+    if (!x) return;
+    x.quantite--;
+    if (x.quantite <= 0) etatEcran.panier.delete(a.id);
+    vibrer(8);
+    rafraichirCarte(a.id);
+    majBarre();
   }
 
   function dessinerGrille() {
@@ -133,9 +146,12 @@ export async function afficher(racine) {
     const n = lignes.reduce((s, l) => s + l.quantite, 0);
     barre.classList.toggle('visible', n > 0);
     document.body.classList.toggle('avec-panier', n > 0);
+    resumePanier.setAttribute('aria-label', `Voir le panier : ${n} article${n > 1 ? 's' : ''}`);
     resumePanier.replaceChildren(
-      h('span', { class: 'legende' }, `${n} article${n > 1 ? 's' : ''} · voir le panier`),
-      h('span', { class: 'barre-panier-total' }, fm(lignes.reduce((s, l) => s + l.total, 0), etatEcran.devise)));
+      h('span', { class: 'barre-panier-icone' }, icone('panier', 24), h('span', { class: 'barre-panier-nombre' }, String(n))),
+      h('span', { class: 'barre-panier-textes' },
+        h('span', { class: 'barre-panier-lien' }, 'Voir le panier'),
+        h('span', { class: 'barre-panier-total' }, fm(lignes.reduce((s, l) => s + l.total, 0), etatEcran.devise))));
   }
   function majTout() { dessinerGrille(); majBarre(); }
 

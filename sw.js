@@ -2,7 +2,7 @@
 // Stratégie : réponse immédiate depuis le cache, puis mise à jour en arrière-plan.
 // Changer VERSION à chaque mise en ligne pour remplacer l'ancienne copie.
 
-const VERSION = 'cintre-0.1.0';
+const VERSION = 'cintre-0.1.1';
 const FICHIERS = [
   './', './index.html', './manifest.json', './config.js', './css/style.css',
   './js/app.js', './js/api.js', './js/db.js', './js/moteur.js', './js/money.js', './js/temps.js',
