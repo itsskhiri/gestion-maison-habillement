@@ -1,0 +1,137 @@
+// Données de démonstration : articles de mode, 30 jours de ventes, dettes avec paiements
+// partiels et dépenses. Tout passe par le moteur, donc les chiffres respectent les mêmes règles.
+
+import * as m from './moteur.js';
+import { aujourdhui, ajouterJours, isoPourJour, maintenantIso } from './temps.js';
+import { convertir } from './money.js';
+
+const ARTICLES = [
+  ['Robe pagne wax M', 2500, 'USD', 14, 'robes'],
+  ['Robe de soirée satin', 4500, 'USD', 6, 'robes'],
+  ['Jean slim 38', 1800, 'USD', 18, 'pantalons'],
+  ['Pantalon chino beige', 1500, 'USD', 12, 'pantalons'],
+  ['Jupe plissée noire', 1200, 'USD', 10, 'jupes'],
+  ['Chemise blanche homme L', 1400, 'USD', 15, 'chemises'],
+  ['Chemise en lin', 2000, 'USD', 8, 'chemises'],
+  ['T-shirt coton col rond', 15000, 'CDF', 26, 'tshirts'],
+  ['Polo homme', 25000, 'CDF', 16, 'tshirts'],
+  ['Veste en jean', 2800, 'USD', 7, 'vestes'],
+  ['Manteau long femme', 5500, 'USD', 4, 'vestes'],
+  ['Ensemble pagne enfant', 30000, 'CDF', 12, 'enfants'],
+  ['Baskets blanches 40', 3000, 'USD', 9, 'chaussures'],
+  ['Sandales en cuir', 35000, 'CDF', 10, 'chaussures'],
+  ['Sac à main cuir', 3500, 'USD', 6, 'accessoires'],
+  ['Ceinture homme', 10000, 'CDF', 15, 'accessoires'],
+];
+
+const CLIENTS = [
+  ['Maman Furaha', '+243 990 000 111'], ['Jean-Paul Bisimwa', null], ['Aline Mushagalusa', '+243 970 000 222'],
+  ['Patrick Cirhuza', null], ['Neema Bahati', '+243 850 000 333'], ['Espoir Kabare', null],
+];
+
+// Générateur pseudo-aléatoire fixe : les exemples sont identiques à chaque chargement.
+function aleatoire(graine) {
+  let a = graine;
+  return () => {
+    a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function fusionner(total, changes) {
+  for (const [t, recs] of Object.entries(changes)) {
+    const liste = (total[t] ??= []);
+    for (const r of recs) if (!liste.includes(r)) liste.push(r);
+  }
+}
+
+export function genererExemples(etat) {
+  const p = m.exigerProfil(etat);
+  const hasard = aleatoire(20261117);
+  const entre = (a, b) => a + Math.floor(hasard() * (b - a + 1));
+  const choisir = (liste) => liste[Math.floor(hasard() * liste.length)];
+  const total = {};
+  const faire = (r) => { fusionner(total, r.changes); return r.resultat; };
+  // Jamais d'opération dans le futur (aujourd'hui, seulement jusqu'à l'heure actuelle).
+  const maintenant = maintenantIso();
+  const passe = (q) => q.date <= maintenant;
+
+  const fin = aujourdhui();
+  const debut = ajouterJours(fin, -29);
+  const quandDebut = { date: isoPourJour(debut, 8, 0) };
+
+  const articles = ARTICLES.map(([nom, prix, devise, quantite, categorie]) =>
+    faire(m.ajouterArticle(etat, { nom, prix, devise, quantite: quantite * 2, categorie }, quandDebut)));
+
+  const dettesOuvertes = [];
+  for (let i = 0; i < 30; i++) {
+    const jour = ajouterJours(debut, i);
+    const taux = i < 15 ? 2800 : p.taux;
+    const nbVentes = entre(2, 6);
+    for (let k = 0; k < nbVentes; k++) {
+      const dispo = articles.filter((a) => a.quantite > 0);
+      if (!dispo.length) break;
+      const lignes = [];
+      const nbLignes = hasard() < 0.3 ? 2 : 1;
+      for (let n = 0; n < nbLignes; n++) {
+        const a = choisir(dispo);
+        if (!lignes.some((l) => l.article_id === a.id)) lignes.push({ article_id: a.id, quantite: 1 });
+      }
+      const quand = { date: isoPourJour(jour, entre(9, 18), entre(0, 59)) };
+      if (!passe(quand)) continue;
+      const mode = hasard() < 0.7 ? 'cash' : choisir(['mpesa', 'mpesa', 'airtel', 'orange']);
+      const totalEn = (devise) => lignes.reduce((s, l) => {
+        const a = articles.find((x) => x.id === l.article_id);
+        return s + convertir(a.prix, a.devise, devise, taux);
+      }, 0);
+      if (hasard() < 0.15) {
+        const [nom, telephone] = choisir(CLIENTS);
+        const acompte = hasard() < 0.5
+          ? { devise: p.devise_principale, montant: Math.floor(totalEn(p.devise_principale) / 3), mode: 'cash' }
+          : null;
+        const v = faire(m.creerVente(etat, {
+          devise: p.devise_principale, taux, lignes,
+          paiement: { type: 'credit', client: { nom, telephone }, acompte: acompte?.montant ? acompte : null },
+        }, quand));
+        dettesOuvertes.push({ client_id: v.client_id, jour: i });
+      } else {
+        // Un tiers des clients paient en francs, même pour les articles affichés en dollars.
+        const devise = hasard() < 0.33 ? 'CDF' : 'USD';
+        faire(m.creerVente(etat, {
+          devise, taux, lignes,
+          paiement: { type: 'payee', encaissements: [{ devise, montant: totalEn(devise), mode }] },
+        }, quand));
+      }
+    }
+
+    // Quelques clients reviennent payer une partie de leur dette.
+    for (const d of dettesOuvertes) {
+      if (i - d.jour < 3 || hasard() > 0.1) continue;
+      const fiche = m.ficheClient(etat, d.client_id);
+      const reste = fiche.reste[p.devise_principale];
+      if (reste <= 0) continue;
+      const montant = hasard() < 0.3 ? reste : Math.max(1, Math.floor(reste / 3));
+      const quandPaiement = { date: isoPourJour(jour, entre(10, 17), entre(0, 59)) };
+      if (!passe(quandPaiement)) continue;
+      faire(m.encaisserPaiement(etat, {
+        client_id: d.client_id, devise_dette: p.devise_principale, montant_recu: montant,
+        mode: hasard() < 0.6 ? 'cash' : 'mpesa', taux,
+      }, quandPaiement));
+    }
+
+    // Dépenses
+    const usd = (dollars) => convertir(dollars * 100, 'USD', p.devise_principale, taux);
+    const quandDepense = { date: isoPourJour(jour, 8, 30) };
+    const depense = (type, montant, note) => passe(quandDepense) && faire(m.ajouterDepense(etat, {
+      type, montant, devise: p.devise_principale, note, taux,
+    }, quandDepense));
+    if (i === 0) depense('loyer', usd(200), 'Loyer du mois');
+    if (i === 4 || i === 19) depense('marchandise', usd(150), 'Arrivage de Kampala');
+    if (i === 10) depense('energie', usd(25), 'SNEL et REGIDESO');
+    if (i === 27) depense('salaire', usd(80), 'Vendeuse');
+    if (i % 3 === 1) depense('transport', usd(entre(2, 5)), null);
+  }
+  return total;
+}

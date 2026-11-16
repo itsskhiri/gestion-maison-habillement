@@ -1,0 +1,15 @@
+# Secrets et fichiers locaux : ne jamais les envoyer sur Git
+.env
+.env.*
+*.local
+supabase/.temp/
+sauvegardes/
+*.dump
+*.sql.gz
+
+# Systèmes et éditeurs
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+node_modules/

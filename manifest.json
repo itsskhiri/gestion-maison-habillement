@@ -1,0 +1,20 @@
+{
+  "name": "Cintre – Gestion de boutique",
+  "short_name": "Cintre",
+  "description": "Ventes, stock, dettes et caisse de ta boutique de vêtements.",
+  "lang": "fr",
+  "dir": "ltr",
+  "start_url": "./#/vendre",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F3F1EE",
+  "theme_color": "#6B1E3A",
+  "categories": ["business", "finance", "shopping"],
+  "icons": [
+    { "src": "icons/icone-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icone-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icone-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/icone.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}
