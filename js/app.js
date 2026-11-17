@@ -41,8 +41,11 @@ async function afficher() {
   const chemin = decodeURIComponent(location.hash.replace(/^#/, '')) || '/vendre';
   const boutique = await api.profil();
 
-  if (!boutique) {
+  // Pas encore de boutique (ou lien « mot de passe oublié ») : écran d'accueil / connexion.
+  if (!boutique || chemin === '/nouveau-mot-de-passe') {
+    if (chemin === '/nouveau-mot-de-passe') accueil.ouvrirVue('nouveau');
     document.body.classList.add('sans-nav');
+    routePrecedente = null;
     vider(racine);
     accueil.afficher(racine);
     return;
@@ -87,6 +90,9 @@ async function afficher() {
 }
 
 async function demarrer() {
+  // Retour d'un lien reçu par e-mail (confirmation du compte ou mot de passe oublié).
+  const parametres = new URLSearchParams(location.search);
+  const retourEmail = parametres.has('reinitialisation') ? 'reinitialisation' : parametres.has('confirme') ? 'confirme' : null;
   try {
     const { memoireSeulement } = await api.initialiser();
     if (memoireSeulement) toast('Attention : ce navigateur ne garde pas les données. Ouvre l’app dans Safari.', { duree: 8000, type: 'toast-erreur' });
@@ -104,6 +110,13 @@ async function demarrer() {
   window.addEventListener('hashchange', afficher);
   suivreDefilement();
   api.surChangement(afficher);
+  api.surChangementSession((evenement) => {
+    if (evenement === 'PASSWORD_RECOVERY') location.hash = '#/nouveau-mot-de-passe';
+  });
+  if (retourEmail) {
+    history.replaceState(null, '', location.pathname + (retourEmail === 'reinitialisation' ? '#/nouveau-mot-de-passe' : '#/vendre'));
+    if (retourEmail === 'confirme') toast('Ton compte est confirmé. Bienvenue !');
+  }
   await afficher();
   verifierInstallation();
 

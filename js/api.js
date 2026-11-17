@@ -3,10 +3,14 @@
 // à la base, au moteur ou (plus tard) à Supabase directement : pour changer de serveur,
 // seule cette couche change.
 //
-// Étape 1 : les données vivent sur l'appareil (IndexedDB) et le moteur local applique les règles.
+// Fonctionnement : le moteur local applique les règles et enregistre sur l'appareil (IndexedDB),
+// donc tout marche sans internet. Si un serveur est configuré (config.js), chaque opération est
+// aussi mise dans la file d'attente, puis envoyée au serveur par sync.js.
 
 import * as db from './db.js';
 import * as m from './moteur.js';
+import * as serveur from './serveur.js';
+import * as sync from './sync.js';
 import { definirFuseau, aujourdhui, ajouterJours, ajouterMois, cleJour, debutSemaine } from './temps.js';
 import { DEVISES } from './money.js';
 import { genererExemples } from './exemples.js';
@@ -23,17 +27,38 @@ export async function initialiser() {
   definirFuseau(etat.profil?.fuseau);
   // Ventes enregistrées avant la numérotation des factures : on leur donne un numéro une fois.
   const { changes } = m.numeroterVentes(etat);
-  if (Object.keys(changes).length) await db.enregistrer(changes);
+  if (Object.keys(changes).length) await db.enregistrer(changes, operationPour(changes));
   db.demanderStockagePersistant();
+  sync.quandRecu(recharger);
+  if (serveur.actif()) {
+    const s = await serveur.session().catch(() => null);
+    if (s) await preparerCompte(s);
+  }
+  sync.demarrer();
   return { memoireSeulement: db.modeMemoire };
 }
 
-// Exécute une opération du moteur puis l'enregistre en une transaction.
+// Recharge l'état depuis l'appareil (après réception de données du serveur).
+async function recharger() {
+  etat = await db.chargerTout();
+  definirFuseau(etat.profil?.fuseau);
+  notifier();
+}
+
+// Opération à envoyer au serveur (seulement si un serveur est configuré).
+let compteurOperations = Date.now() * 1000;
+function operationPour(changes) {
+  if (!serveur.actif()) return null;
+  return { id: m.uuid(), numero: compteurOperations++, cree_le: new Date().toISOString(), changes: structuredClone(changes) };
+}
+
+// Exécute une opération du moteur puis l'enregistre en une transaction (+ file d'attente).
 async function executer(operation) {
   const { changes, resultat } = operation(etat);
   if (Object.keys(changes).length) {
     try {
-      await db.enregistrer(changes);
+      await db.enregistrer(changes, operationPour(changes));
+      sync.demander();
     } catch (e) {
       etat = await db.chargerTout(); // on revient à l'état réellement enregistré
       throw new Error("L'enregistrement a échoué sur cet appareil. Réessaie.", { cause: e });
@@ -171,18 +196,127 @@ export async function chargerExemples() {
     throw new m.ErreurMetier('Des données existent déjà. Efface tout avant de charger les exemples.');
   }
   const changes = genererExemples(etat);
-  await db.enregistrer(changes);
+  await db.enregistrer(changes, operationPour(changes));
+  sync.demander();
   notifier();
 }
 
 export async function toutEffacer({ garderBoutique = false } = {}) {
   const p = etat.profil;
+  if (serveur.actif()) {
+    if (!navigator.onLine) throw new m.ErreurMetier('Connecte-toi à internet pour effacer les données de ton compte.');
+    await sync.synchroniser().catch(() => {});
+    await serveur.effacerMesDonnees(garderBoutique);
+  }
   await db.toutEffacer();
   etat = m.etatVide();
   if (garderBoutique && p) {
     etat.profil = p;
     await db.enregistrer({ profil: [p] });
   }
+  await sync.compterAttente();
+  notifier();
+}
+
+/* =================== Compte et synchronisation =================== */
+
+export const serveurActif = () => serveur.actif();
+export const surSynchronisation = (fn) => sync.surStatut(fn);
+export const synchroniserMaintenant = () => sync.synchroniser();
+
+export async function compte() {
+  if (!serveur.actif()) return null;
+  const s = await serveur.session().catch(() => null);
+  return s ? { email: s.user.email, id: s.user.id } : null;
+}
+
+// Prépare l'appareil pour le compte connecté :
+//   - même compte qu'avant : on envoie ce qui attend et on reçoit les nouveautés ;
+//   - nouvel appareil (ou autre compte) : on récupère toutes les données du compte ;
+//   - compte tout neuf : on y envoie les données déjà saisies sur l'appareil (s'il y en a),
+//     sinon on crée la boutique avec les informations données à l'inscription.
+async function preparerCompte(session) {
+  const uid = session.user.id;
+  const precedent = await db.lireMeta('utilisateur');
+  if (precedent === uid) { sync.demander(0); return; }
+
+  const { changes, curseur } = await serveur.lireDepuis(null);
+  const serveurAUneBoutique = (changes.profil || []).length > 0;
+  if (serveurAUneBoutique) {
+    await db.toutEffacer();
+    await db.appliquerDistant(changes);
+  } else if (precedent && precedent !== uid) {
+    await db.toutEffacer(); // données d'un autre compte sur cet appareil
+  }
+  await db.ecrireMeta('utilisateur', uid);
+  if (curseur) await db.ecrireMeta('curseur', curseur);
+  etat = await db.chargerTout();
+
+  if (!serveurAUneBoutique) {
+    if (etat.profil) {
+      // Données saisies sur l'appareil avant la création du compte : on les envoie toutes.
+      const tout = {};
+      for (const t of m.TABLES) {
+        const lignes = t === 'profil' ? [etat.profil] : etat[t];
+        if (lignes.length) tout[t] = lignes;
+      }
+      await db.enregistrer({ profil: [etat.profil] }, operationPour(tout));
+    } else {
+      const b = session.user.user_metadata?.boutique;
+      if (b?.nom_boutique) {
+        const { changes: c } = m.creerProfil(etat, b);
+        await db.enregistrer(c, operationPour(c));
+      }
+    }
+  }
+  definirFuseau(etat.profil?.fuseau);
+  sync.demander(0);
+  notifier();
+}
+
+export async function connexion(email, motDePasse) {
+  const s = await serveur.connexion(email.trim(), motDePasse);
+  await preparerCompte(s);
+}
+
+// Création du compte. La boutique est gardée avec le compte (pour la créer à la 1re connexion
+// si une confirmation par e-mail est demandée).
+export async function creerCompte({ email, motDePasse, boutique }) {
+  if (!motDePasse || motDePasse.length < 8) throw new m.ErreurMetier('Le mot de passe doit avoir au moins 8 caractères.');
+  m.creerProfil(m.etatVide(), boutique); // vérifie la boutique avant d'appeler le serveur
+  const r = await serveur.creerCompte({ email: email.trim(), motDePasse, boutique });
+  if (r.session) await preparerCompte(r.session);
+  return { confirmationNecessaire: r.confirmationNecessaire };
+}
+
+export const renvoyerConfirmation = (email) => serveur.renvoyerConfirmation(email.trim());
+export const motDePasseOublie = (email) => serveur.motDePasseOublie(email.trim());
+export async function changerMotDePasse(motDePasse) {
+  if (!motDePasse || motDePasse.length < 8) throw new m.ErreurMetier('Le mot de passe doit avoir au moins 8 caractères.');
+  await serveur.changerMotDePasse(motDePasse);
+}
+export const surChangementSession = (fn) => { if (serveur.actif()) serveur.surChangementSession(fn); };
+
+export const operationsEnAttente = async () => (await db.fileAttente()).length;
+
+// Déconnexion : les données de cet appareil sont effacées (elles restent sur le serveur).
+export async function deconnexion() {
+  await serveur.deconnexion();
+  await db.toutEffacer();
+  await db.ecrireMeta('utilisateur', null);
+  await db.ecrireMeta('curseur', null);
+  etat = m.etatVide();
+  await sync.compterAttente();
+  notifier();
+}
+
+export async function supprimerCompte() {
+  if (!navigator.onLine) throw new m.ErreurMetier('Connecte-toi à internet pour supprimer ton compte.');
+  await serveur.supprimerMonCompte();
+  await db.toutEffacer();
+  await db.ecrireMeta('utilisateur', null);
+  await db.ecrireMeta('curseur', null);
+  etat = m.etatVide();
   notifier();
 }
 

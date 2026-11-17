@@ -1,9 +1,12 @@
 // Configuration générale de l'application.
-// Étape 1 : aucune clé, aucun serveur. Les réglages Supabase (URL + clé publique anon)
-// seront ajoutés ici à l'étape 2. Ne jamais mettre de clé secrète dans ce fichier.
+// Serveur Supabase : URL du projet + clé PUBLIQUE « anon » (faite pour être visible ; la sécurité
+// par ligne protège les données). Laisser vides pour utiliser l'application sur l'appareil seul.
+// Ne JAMAIS mettre ici la clé secrète « service_role ».
 export const CONFIG = {
+  supabaseUrl: '',
+  supabaseCleAnon: '',
   nomApp: 'Cintre',
-  version: '0.7.0',
+  version: '0.8.0',
   fuseauParDefaut: 'Africa/Lubumbashi', // Bukavu, Goma, Lubumbashi (UTC+2)
   tauxParDefaut: 2850,                  // 1 $ = 2 850 FC, modifiable par le vendeur
   seuilStockBasParDefaut: 3,

@@ -3,7 +3,7 @@
 // Étape 2 : ajout de « Se déconnecter » et « Supprimer mon compte » ; étape 5 : réglages des e-mails.
 
 import * as api from './api.js';
-import { h, icone, enTete, logo, champ, saisie, saisieLongue, segment, confirmer, toast, erreur, enCours, telechargerFichier, vibrer } from './ui.js';
+import { h, icone, enTete, logo, champ, saisie, saisieLongue, segment, confirmer, toast, erreur, enCours, telechargerFichier, vibrer, ouvrirFeuille } from './ui.js';
 import { lireEntier, formater } from './money.js';
 import { FUSEAUX } from './reference.js';
 import { aujourdhui } from './temps.js';
@@ -13,6 +13,73 @@ const EXPORTS = [
   ['ventes', 'Ventes'], ['articles', 'Articles'], ['dettes', 'Dettes'],
   ['paiements', 'Paiements des clients'], ['depenses', 'Dépenses'], ['caisse', 'Journal de caisse'],
 ];
+
+// Section « Compte » (seulement avec un serveur) : e-mail, synchronisation, déconnexion, suppression.
+async function sectionCompte() {
+  if (!api.serveurActif()) return null;
+  const compte = await api.compte();
+  const LIBELLES = {
+    synchronise: 'Tout est enregistré sur ton compte', attente: 'En attente d’envoi', envoi: 'Envoi en cours…',
+    horsligne: 'Hors-ligne : envoi au retour d’internet', reconnexion: 'Reconnecte-toi pour envoyer tes données',
+    erreur: 'Envoi impossible pour le moment (nouvel essai automatique)', local: 'Sur cet appareil seulement',
+  };
+  const etat = h('span', { class: 'etat-sync', 'aria-live': 'polite' });
+  const arreter = api.surSynchronisation(({ statut, enAttente }) => {
+    if (!etat.isConnected && etat.dataset.etat) { arreter(); return; }
+    etat.dataset.etat = statut;
+    etat.textContent = LIBELLES[statut] + (enAttente && statut !== 'synchronise' ? ` (${enAttente})` : '');
+  });
+
+  const synchroniser = h('button', { class: 'btn btn-neutre btn-bloc', type: 'button' }, icone('nuage', 20), 'Synchroniser maintenant');
+  synchroniser.addEventListener('click', enCours(synchroniser, async () => {
+    try { const reste = await api.synchroniserMaintenant(); toast(reste ? `${reste} opération(s) encore en attente.` : 'Tout est à jour.'); } catch (e) { erreur(e); }
+  }));
+
+  const deconnecter = h('button', { class: 'btn btn-secondaire btn-bloc', type: 'button' }, 'Se déconnecter');
+  deconnecter.addEventListener('click', enCours(deconnecter, async () => {
+    const attente = await api.operationsEnAttente();
+    const ok = await confirmer(attente
+      ? { titre: 'Données pas encore envoyées', message: `${attente} opération(s) n’ont pas encore été envoyées à ton compte (pas d’internet ?). Si tu te déconnectes maintenant, elles seront perdues.`, ok: 'Se déconnecter quand même', danger: true }
+      : { titre: 'Se déconnecter ?', message: 'Tes données restent sur ton compte. Tu les retrouveras en te reconnectant.', ok: 'Se déconnecter' });
+    if (!ok) return;
+    try { await api.deconnexion(); location.hash = '#/vendre'; } catch (e) { erreur(e); }
+  }));
+
+  const supprimer = h('button', { class: 'btn-texte-danger btn-bloc', type: 'button' }, icone('corbeille', 20), ' Supprimer mon compte');
+  supprimer.addEventListener('click', enCours(supprimer, async () => {
+    const ok1 = await confirmer({ titre: 'Supprimer ton compte ?', message: 'Ta boutique, tes articles, ventes, factures, dettes et dépenses seront supprimés définitivement, sur ce téléphone et sur le serveur.', ok: 'Continuer', danger: true });
+    if (!ok1) return;
+    const ok2 = await confirmer({ titre: 'Dernière confirmation', message: 'Cette action ne peut pas être annulée.', ok: 'Oui, supprimer mon compte', danger: true });
+    if (!ok2) return;
+    try { await api.supprimerCompte(); toast('Ton compte a été supprimé.'); location.hash = '#/vendre'; } catch (e) { erreur(e); }
+  }));
+
+  return [
+    h('div', { class: 'section-titre' }, h('h2', { class: 'sous-titre' }, 'Compte')),
+    h('div', { class: 'carte pile' },
+      compte ? h('div', {}, h('p', { class: 'legende' }, 'Connecté avec'), h('p', { style: 'font-weight:600;overflow-wrap:anywhere' }, compte.email))
+        : h('p', { class: 'negatif' }, 'Session expirée : reconnecte-toi pour envoyer tes données.'),
+      etat,
+      synchroniser,
+      compte ? deconnecter : h('button', { class: 'btn btn-principal btn-bloc', onclick: reconnecter }, 'Se reconnecter'),
+      compte ? supprimer : null),
+  ];
+}
+
+// Session expirée : se reconnecter SANS effacer les données de l'appareil (elles partent ensuite).
+function reconnecter() {
+  const email = saisie({ type: 'email', inputmode: 'email', autocomplete: 'email', autocapitalize: 'off', 'aria-label': 'Adresse e-mail' });
+  const mdp = saisie({ type: 'password', autocomplete: 'current-password', 'aria-label': 'Mot de passe' });
+  const ok = h('button', { class: 'btn btn-principal btn-bloc btn-grand', type: 'submit' }, 'Se reconnecter');
+  const form = h('form', { class: 'pile', novalidate: true }, champ('E-mail', email), champ('Mot de passe', mdp), ok);
+  const f = ouvrirFeuille({ titre: 'Se reconnecter', contenu: form });
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    enCours(ok, async () => {
+      try { await api.connexion(email.value, mdp.value); f.fermer(); toast('Reconnecté. Envoi de tes données…'); } catch (err) { erreur(err); }
+    })();
+  });
+}
 
 export async function afficher(racine) {
   const [p, articles] = await Promise.all([api.profil(), api.listerArticles()]);
@@ -59,7 +126,7 @@ export async function afficher(racine) {
     } catch (e) { erreur(e); }
   }));
 
-  const effacer = h('button', { class: 'btn-texte-danger btn-bloc' }, icone('corbeille', 20), ' Tout effacer sur cet appareil');
+  const effacer = h('button', { class: 'btn-texte-danger btn-bloc' }, icone('corbeille', 20), api.serveurActif() ? ' Tout effacer (téléphone et compte)' : ' Tout effacer sur cet appareil');
   effacer.addEventListener('click', enCours(effacer, async () => {
     const ok1 = await confirmer({
       titre: 'Tout effacer ?',
@@ -85,6 +152,7 @@ export async function afficher(racine) {
         h('p', { class: 'sous-titre' }, p.nom_boutique),
         h('p', { class: 'texte-2' }, `1 $ = ${formater(p.taux, 'CDF')} · ${articles.length} article${articles.length > 1 ? 's' : ''}`))),
     form,
+    await sectionCompte(),
     h('div', { class: 'section-titre' }, h('h2', { class: 'sous-titre' }, 'Apparence')),
     h('div', { class: 'carte pile-serree' },
       segment([{ id: 'clair', libelle: 'Clair' }, { id: 'sombre', libelle: 'Sombre' }, { id: 'auto', libelle: 'Automatique' }],
@@ -106,5 +174,5 @@ export async function afficher(racine) {
       h('p', { class: 'texte-2' }, 'Charge environ 15 articles de mode, 30 jours de ventes, des dettes et des dépenses pour découvrir tous les écrans.'),
       exemples),
     h('div', { style: 'margin-top:24px' }, effacer),
-    h('p', { class: 'legende', style: 'text-align:center;margin-top:24px' }, `${CONFIG.nomApp} ${CONFIG.version} · données enregistrées sur cet appareil`));
+    h('p', { class: 'legende', style: 'text-align:center;margin-top:24px' }, `${CONFIG.nomApp} ${CONFIG.version} · ${api.serveurActif() ? 'données sur ton compte et sur cet appareil' : 'données enregistrées sur cet appareil'}`));
 }

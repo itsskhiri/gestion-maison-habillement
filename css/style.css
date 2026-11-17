@@ -623,6 +623,30 @@ button.carte-stat { border: 0; text-align: left; }
   *, *::before, *::after { animation-duration: 1ms !important; transition-duration: 1ms !important; }
 }
 
+/* ---------- Comptes : mot de passe, état de la synchronisation ---------- */
+
+.mdp { position: relative; }
+.mdp .saisie { padding-right: 56px; }
+.mdp-oeil { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); color: var(--texte-2); }
+.etat-sync { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; }
+.etat-sync::before { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--texte-3); flex: none; }
+.etat-sync[data-etat="synchronise"]::before { background: var(--positif); }
+.etat-sync[data-etat="attente"]::before, .etat-sync[data-etat="envoi"]::before { background: var(--attention); }
+.etat-sync[data-etat="erreur"]::before, .etat-sync[data-etat="reconnexion"]::before { background: var(--negatif); }
+/* Petit point sur le bouton du profil quand des données attendent d'être envoyées */
+a.btn-icone[href="#/profil"] { position: relative; }
+body[data-sync="attente"] a.btn-icone[href="#/profil"]::after,
+body[data-sync="envoi"] a.btn-icone[href="#/profil"]::after,
+body[data-sync="horsligne"] a.btn-icone[href="#/profil"]::after,
+body[data-sync="erreur"] a.btn-icone[href="#/profil"]::after,
+body[data-sync="reconnexion"] a.btn-icone[href="#/profil"]::after {
+  content: ""; position: absolute; top: 9px; right: 9px; width: 9px; height: 9px; border-radius: 50%;
+  background: var(--attention); box-shadow: 0 0 0 2px var(--fond);
+}
+body[data-sync="erreur"] a.btn-icone[href="#/profil"]::after,
+body[data-sync="reconnexion"] a.btn-icone[href="#/profil"]::after { background: var(--negatif); }
+body[data-sync="horsligne"] a.btn-icone[href="#/profil"]::after { background: var(--texte-3); }
+
 /* ---------- Habillage moderne (cartes héros, verre, mouvements utiles) ---------- */
 
 /* Cartes et listes : coins plus doux, ombres en couches très légères */
