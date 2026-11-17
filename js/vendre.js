@@ -404,7 +404,7 @@ function feuillePaiement(ctx) {
     }
   }
 
-  const payer = h('button', { class: 'btn btn-principal btn-grand btn-bloc' }, icone('coche', 22), 'Payé');
+  const payer = h('button', { class: 'btn btn-principal btn-grand btn-bloc' }, icone('coche', 22), 'Payé et enregistrer la facture');
   payer.addEventListener('click', enCours(payer, async () => {
     try {
       verifierPrix(ctx, champsPrix);
@@ -483,10 +483,10 @@ async function enregistrerVente(ctx, paiement, feuille) {
   feuille.fermer();
   vibrer([10, 30, 10]);
   const recu = await ouvrirRecu(v.id, { nouvelle: true });
-  toast('Vente enregistrée', {
+  toast(`Facture n° ${v.numero} enregistrée`, {
     action: 'Annuler', duree: 6000,
     onAction: async () => {
-      try { await api.annulerVente(v.id); recu?.fermer(); toast('Vente annulée. Le stock est remis.'); } catch (e) { erreur(e); }
+      try { await api.annulerVente(v.id); recu?.fermer(); toast(`Facture n° ${v.numero} annulée. Le stock est remis.`); } catch (e) { erreur(e); }
     },
   });
 }
@@ -556,7 +556,7 @@ async function feuilleCredit(ctx) {
     dessinerClients();
   });
 
-  const valider = h('button', { class: 'btn btn-principal btn-grand btn-bloc' }, 'Enregistrer la vente à crédit');
+  const valider = h('button', { class: 'btn btn-principal btn-grand btn-bloc' }, 'Enregistrer la facture à crédit');
   valider.addEventListener('click', enCours(valider, async () => {
     try {
       if (!choisi && !nom.value.trim()) { nom.classList.add('invalide'); nom.focus(); throw new api.ErreurMetier('Choisis le client ou saisis son nom.'); }
@@ -595,7 +595,7 @@ const montantLigne = (l, v) => (l.devise === 'mixte' ? fmMontants(l.montants) : 
 
 function texteRecu(d, p) {
   const v = d.vente;
-  const L = [`*${p.nom_boutique}*`, `Reçu du ${dateNumerique(v.cree_le)} à ${heure(v.cree_le)}`, ''];
+  const L = [`*${p.nom_boutique}*`, `*Facture n° ${v.numero}*`, `Du ${dateNumerique(v.cree_le)} à ${heure(v.cree_le)}`, ''];
   for (const l of d.lignes) L.push(`${l.quantite} × ${l.nom} : ${montantLigne(l, v)}`);
   L.push('', `*Total : ${fmVente(v)}*`);
   if (v.statut === 'payee') {
@@ -626,14 +626,15 @@ export async function ouvrirRecu(id, { nouvelle = false } = {}) {
 
   // Bénéfice : visible uniquement pour le vendeur (jamais dans le texte partagé au client).
   const benefice = v.total_principal - (v.cout_principal || 0);
-  const annulerBtn = !v.annule_le ? h('button', { class: 'btn-texte-danger' }, 'Annuler cette vente') : null;
+  const annulerBtn = !v.annule_le ? h('button', { class: 'btn-texte-danger' }, 'Annuler cette facture') : null;
   const f = ouvrirFeuille({
-    titre: nouvelle ? 'Vente enregistrée' : 'Reçu',
+    titre: nouvelle ? `Facture n° ${v.numero} enregistrée` : `Facture n° ${v.numero}`,
     contenu: h('div', { class: 'pile' },
       h('div', { class: 'recu' },
         h('div', { class: 'recu-tete' },
           nouvelle ? h('span', { class: 'cachet-ok' }, icone('coche', 30)) : logo(p.nom_boutique, 48),
           h('strong', { class: 'sous-titre' }, p.nom_boutique),
+          h('span', { class: 'badge badge-accent' }, `Facture n° ${v.numero}`),
           h('span', { class: 'texte-2' }, `${libelleJour(cleJour(v.cree_le))} · ${heure(v.cree_le)}`),
           v.annule_le ? h('span', { class: 'badge badge-zero' }, `Annulée à ${heure(v.annule_le)}`) : null),
         h('div', { class: `recu-lignes${v.annule_le ? ' barre-annule' : ''}` },
@@ -644,14 +645,14 @@ export async function ouvrirRecu(id, { nouvelle = false } = {}) {
         h('div', { class: 'recu-pied' }, ...pied)),
       !v.annule_le ? h('p', { class: `champ-aide ${benefice < 0 ? 'negatif' : 'positif'}`, style: 'text-align:center' },
         `Pour toi seulement : bénéfice ${formater(benefice, p.devise_principale, { signe: true })}`) : null,
-      h('button', { class: 'btn btn-principal btn-bloc', onclick: () => partager(texteRecu(d, p)) }, icone('partager', 20), 'Partager le reçu'),
+      h('button', { class: 'btn btn-principal btn-bloc', onclick: () => partager(texteRecu(d, p)) }, icone('partager', 20), 'Partager la facture'),
       nouvelle ? h('button', { class: 'btn btn-secondaire btn-bloc', onclick: () => f.fermer() }, 'Nouvelle vente') : null,
       annulerBtn),
   });
   annulerBtn?.addEventListener('click', enCours(annulerBtn, async () => {
     const ok = await confirmer({
-      titre: 'Annuler cette vente ?',
-      message: 'Le stock sera remis et la caisse corrigée. La vente restera visible, barrée, dans l’historique.',
+      titre: `Annuler la facture n° ${v.numero} ?`,
+      message: 'Le stock sera remis et la caisse corrigée. La facture restera visible, barrée, avec la mention « Annulée ».',
       ok: 'Annuler la vente', danger: true,
     });
     if (!ok) return;
@@ -704,7 +705,7 @@ export async function afficherHistorique(racine) {
         return h('button', { class: 'liste-ligne', onclick: () => ouvrirRecu(v.id) },
           h('span', { class: 'liste-ligne-corps' },
             h('span', { class: `liste-ligne-titre${v.annule_le ? ' barre-annule' : ''}` }, resume),
-            h('span', { class: 'liste-ligne-sous' }, `${heure(v.cree_le)}${client ? ' · ' + client.nom : ''}`)),
+            h('span', { class: 'liste-ligne-sous' }, `Facture n° ${v.numero} · ${heure(v.cree_le)}${client ? ' · ' + client.nom : ''}`)),
           h('span', { class: 'liste-ligne-fin' },
             h('span', { class: `liste-ligne-montant${v.annule_le ? ' barre-annule' : ''}` }, fmVente(v)),
             v.annule_le ? h('span', { class: 'badge badge-zero' }, 'Annulée')

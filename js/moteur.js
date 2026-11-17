@@ -348,7 +348,7 @@ export function creerVente(etat, entree, opts) {
   const l = lot(etat);
   if (nouveauClient) l.inserer('clients', nouveauClient);
   const vente = {
-    id, cree_le: quand, devise, taux, total, totaux, total_principal, cout_principal,
+    id, numero: prochainNumero(etat), cree_le: quand, devise, taux, total, totaux, total_principal, cout_principal,
     statut: pay.type, client_id: client?.id ?? null,
     mode: pay.type === 'payee' ? encaissements[0].mode : acompte?.mode ?? null,
     annule_le: null,
@@ -401,6 +401,21 @@ export function creerVente(etat, entree, opts) {
     }
   }
   return { changes: l.changes, resultat: vente };
+}
+
+// Numéro de la prochaine facture (chaque vente est une facture : n° 1, 2, 3…).
+function prochainNumero(etat) {
+  let max = 0;
+  for (const v of etat.ventes) if (v.numero > max) max = v.numero;
+  return max + 1;
+}
+
+// Donne un numéro de facture aux ventes enregistrées avant la numérotation (par ordre de date).
+export function numeroterVentes(etat) {
+  const sans = etat.ventes.filter((v) => !v.numero).sort((a, b) => a.cree_le.localeCompare(b.cree_le));
+  const l = lot(etat);
+  for (const v of sans) { v.numero = prochainNumero(etat); l.maj('ventes', v); }
+  return { changes: l.changes, resultat: sans.length };
 }
 
 export function annulerVente(etat, id, opts) {
@@ -734,8 +749,11 @@ export function dettesParClient(etat) {
   const parClient = new Map();
   for (const d of etat.dettes) {
     if (!actif(d)) continue;
-    const c = parClient.get(d.client_id) || { du: { USD: 0, CDF: 0 }, paye: { USD: 0, CDF: 0 }, reste: { USD: 0, CDF: 0 }, plusAncienne: null };
+    const c = parClient.get(d.client_id) || { du: { USD: 0, CDF: 0 }, paye: { USD: 0, CDF: 0 }, reste: { USD: 0, CDF: 0 }, plusAncienne: null, factures: [] };
     const paye = dejaPaye(etat, d.id, annules);
+    // Factures encore dues (une vente « $ + FC » peut avoir deux dettes pour la même facture).
+    const numero = etat.ventes.find((v) => v.id === d.vente_id)?.numero;
+    if (d.montant - paye > 0 && numero && !c.factures.includes(numero)) c.factures.push(numero);
     c.du[d.devise] += d.montant;
     c.paye[d.devise] += paye;
     c.reste[d.devise] += d.montant - paye;
@@ -780,6 +798,7 @@ export function ficheClient(etat, clientId) {
     if (d.client_id !== clientId || !actif(d)) continue;
     evenements.push({
       type: 'achat', quand: d.cree_le, dette: d, devise: d.devise,
+      numero: etat.ventes.find((v) => v.id === d.vente_id)?.numero ?? null,
       lignes: etat.lignes_de_vente.filter((l) => l.vente_id === d.vente_id),
     });
   }
@@ -868,7 +887,9 @@ export function rapportDuJour(etat, cle) {
   }));
   const paiements = etat.paiements_dette.filter(duJour).sort((a, b) => a.cree_le.localeCompare(b.cree_le))
     .map((pm) => ({ paiement: pm, client: client(pm.client_id), reste_apres: apres.get(pm.id) ?? 0 }));
-  const nouvellesDettes = etat.dettes.filter((d) => duJour(d) && actif(d)).map((d) => ({ dette: d, client: client(d.client_id) }));
+  const nouvellesDettes = etat.dettes.filter((d) => duJour(d) && actif(d)).map((d) => ({
+    dette: d, client: client(d.client_id), numero: etat.ventes.find((v) => v.id === d.vente_id)?.numero ?? null,
+  }));
   const depenses = etat.depenses.filter(duJour).sort((a, b) => a.cree_le.localeCompare(b.cree_le));
 
   const articles = new Map();
@@ -889,6 +910,31 @@ export function rapportDuJour(etat, cle) {
     articlesVendus: [...articles.entries()].map(([nom, quantite]) => ({ nom, quantite })).sort((a, b) => b.quantite - a.quantite),
     taux: [...taux].sort((a, b) => a - b),
   };
+}
+
+// Factures (ventes) d'une période, de la plus récente à la plus ancienne, avec un résumé.
+export function factures(etat, debut, fin) {
+  const p = exigerProfil(etat);
+  const liste = etat.ventes
+    .filter((v) => dansPeriode(v.cree_le, debut, fin))
+    .sort((a, b) => b.cree_le.localeCompare(a.cree_le))
+    .map((v) => ({
+      vente: v,
+      lignes: etat.lignes_de_vente.filter((l) => l.vente_id === v.id),
+      client: v.client_id ? etat.clients.find((c) => c.id === v.client_id) || null : null,
+    }));
+  const resume = { nombre: 0, payees: 0, credit: 0, annulees: 0, totaux: { USD: 0, CDF: 0 }, totalPrincipal: 0 };
+  for (const { vente: v } of liste) {
+    if (v.annule_le) { resume.annulees++; continue; }
+    resume.nombre++;
+    if (v.statut === 'credit') resume.credit++; else resume.payees++;
+    const t = v.totaux ?? { USD: 0, CDF: 0, [v.devise]: v.total };
+    resume.totaux.USD += t.USD;
+    resume.totaux.CDF += t.CDF;
+    resume.totalPrincipal += v.total_principal;
+  }
+  resume.devise = p.devise_principale;
+  return { liste, resume };
 }
 
 export function premiereActivite(etat) {

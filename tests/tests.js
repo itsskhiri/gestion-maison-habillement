@@ -201,6 +201,37 @@ test('Paiement $ + FC par produit, à crédit : une dette par devise', () => {
   egal(m.ficheClient(e, v.client_id).reste, { USD: 1000, CDF: 57100 });
 });
 
+test('Factures : numérotées 1, 2, 3…, liées aux dettes, listées par période', () => {
+  const { e, robe } = boutique();
+  const v1 = vendre(e, robe, 1, 45000, {}, J('2026-11-09', 10));                 // lundi
+  const v2 = vendre(e, robe, 1, 46000, { paiement: { type: 'credit', client: { nom: 'Ciza' } } }, J('2026-11-12', 11));
+  const v3 = vendre(e, robe, 1, 47000, {}, J('2026-11-16', 9));                  // lundi suivant
+  egal([v1.numero, v2.numero, v3.numero], [1, 2, 3]);
+  m.annulerVente(e, v3.id);
+  egal(vendre(e, robe, 1, 45000, {}, J('2026-11-16', 15)).numero, 4, 'un numéro annulé n’est jamais réutilisé');
+  // Dette de Ciza liée à la facture n° 2
+  const ciza = m.dettesParClient(e).find((c) => c.client.nom === 'Ciza');
+  egal(ciza.factures, [2]);
+  egal(m.ficheClient(e, ciza.client.id).historique[0].numero, 2);
+  // Semaine du 9 au 15 novembre : factures 1 et 2
+  const sem = m.factures(e, '2026-11-09', '2026-11-15');
+  egal(sem.liste.map((x) => x.vente.numero), [2, 1]);
+  egal([sem.resume.nombre, sem.resume.payees, sem.resume.credit], [2, 1, 1]);
+  egal(sem.resume.totaux.CDF, 91000);
+  const jour = m.factures(e, '2026-11-16', '2026-11-16');
+  egal([jour.resume.nombre, jour.resume.annulees], [1, 1], 'facture annulée listée à part');
+});
+
+test('Anciennes ventes sans numéro : numérotées une fois, par ordre de date', () => {
+  const { e, robe } = boutique();
+  vendre(e, robe, 1, 45000, {}, J('2026-11-02'));
+  vendre(e, robe, 1, 45000, {}, J('2026-11-01'));
+  for (const v of e.ventes) delete v.numero;
+  egal(m.numeroterVentes(e).resultat, 2);
+  egal(e.ventes.map((v) => [cleJour(v.cree_le), v.numero]), [['2026-11-02', 2], ['2026-11-01', 1]]);
+  egal(m.numeroterVentes(e).resultat, 0, 'rien à refaire');
+});
+
 test('Paiement mixte dollars + francs', () => {
   const { e, robe } = boutique();
   // Prix convenu 100 000 FC : le client donne 20 $ (57 000 FC) + 43 000 FC

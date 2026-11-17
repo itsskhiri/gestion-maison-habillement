@@ -66,6 +66,9 @@ export function ajouterMois(mois, n) {
 
 export const joursEntre = (a, b) => Math.round((midi(b) - midi(a)) / 86400000);
 
+// Lundi de la semaine qui contient ce jour.
+export const debutSemaine = (cle) => ajouterJours(cle, -((midi(cle).getUTCDay() + 6) % 7));
+
 // Date ISO correspondant à une heure locale de la boutique (utile pour les exemples et les tests).
 export function isoPourJour(cle, h = 12, min = 0) {
   const [a, m, j] = cle.split('-').map(Number);

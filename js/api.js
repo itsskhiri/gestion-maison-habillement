@@ -7,7 +7,7 @@
 
 import * as db from './db.js';
 import * as m from './moteur.js';
-import { definirFuseau, aujourdhui, ajouterJours, ajouterMois, cleJour } from './temps.js';
+import { definirFuseau, aujourdhui, ajouterJours, ajouterMois, cleJour, debutSemaine } from './temps.js';
 import { DEVISES } from './money.js';
 import { genererExemples } from './exemples.js';
 
@@ -21,6 +21,9 @@ const notifier = () => abonnes.forEach((fn) => fn());
 export async function initialiser() {
   etat = await db.chargerTout();
   definirFuseau(etat.profil?.fuseau);
+  // Ventes enregistrées avant la numérotation des factures : on leur donne un numéro une fois.
+  const { changes } = m.numeroterVentes(etat);
+  if (Object.keys(changes).length) await db.enregistrer(changes);
   db.demanderStockagePersistant();
   return { memoireSeulement: db.modeMemoire };
 }
@@ -119,6 +122,21 @@ export function bornesPeriode(periode, ref = aujourdhui()) {
 }
 
 export const statsPeriode = (debut, fin) => lire((e) => m.statsPeriode(e, debut, fin));
+
+// Factures d'un jour, d'une semaine (lundi → dimanche) ou d'un mois ; `decalage` recule de N périodes.
+export function bornesFactures(periode, decalage = 0, ref = aujourdhui()) {
+  if (periode === 'semaine') {
+    const debut = ajouterJours(debutSemaine(ref), 7 * decalage);
+    return { debut, fin: ajouterJours(debut, 6) };
+  }
+  if (periode === 'mois') {
+    const mois = ajouterMois(ref.slice(0, 7), decalage);
+    return { debut: mois + '-01', fin: ajouterJours(ajouterMois(mois, 1) + '-01', -1) };
+  }
+  const jour = ajouterJours(ref, decalage);
+  return { debut: jour, fin: jour };
+}
+export const factures = (debut, fin) => lire((e) => m.factures(e, debut, fin));
 export const soldeCaisse = () => lire((e) => m.soldeCaisse(e));
 export const journalCaisse = (debut, fin, filtre) => lire((e) => m.journalCaisse(e, debut, fin, filtre));
 export const ventesParCategorie = (debut, fin) => lire((e) => m.ventesParCategorie(e, debut, fin));

@@ -27,6 +27,9 @@ Pensée d'abord pour l'iPhone (Safari), compatible Android et ordinateur.
   en dollars et une en francs. Le bénéfice s'affiche par produit et au total. Paiement **Cash,
   M-Pesa, Airtel Money, Orange Money**, **vente à crédit avec acompte**, reçu WhatsApp (qui ne montre
   jamais le prix d'achat), annulation, historique des ventes. Taux du jour fixé par le vendeur.
+- **Factures** : chaque vente est une **facture numérotée** (n° 1, 2, 3…, jamais réutilisé). Onglet Factures
+  par **jour, semaine ou mois** (flèches pour les périodes passées), avec total, payées et à crédit. Chaque
+  dette indique sa facture (« Ciza · Facture n° 23 »).
 - **Articles** : nom + prix d'achat + quantité (catégorie facultative), « Ajouter un autre », nouvel
   arrivage, modification, suppression. Stock jamais négatif.
 - **Dettes** : total à recevoir, fiche client (total dû / déjà payé / reste), paiement partiel,
@@ -90,7 +93,7 @@ complet demandent HTTPS : utilise plutôt le lien Netlify ci-dessous.
 
 ## Tests
 
-- **Moteur** (31 tests : montants, conversions, prix par produit, vente invalide, bénéfice, stock, dettes, acomptes, caisse, rapports) :
+- **Moteur** (33 tests : montants, conversions, prix par produit, vente invalide, bénéfice, stock, dettes, acomptes, caisse, rapports) :
   lancer le serveur local puis ouvrir http://localhost:8000/tests/ — le titre doit afficher « OK ».
 - Les parcours au toucher et les captures d'écran (375, 390, 430 px, clair et sombre) ont été vérifiés
   avec Playwright sur Edge.

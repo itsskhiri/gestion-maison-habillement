@@ -9,6 +9,7 @@ import * as articles from './articles.js';
 import * as dettes from './dettes.js';
 import * as depenses from './depenses.js';
 import * as caisse from './caisse.js';
+import * as factures from './factures.js';
 import * as rapports from './rapports.js';
 import * as profil from './profil.js';
 import { verifierInstallation } from './installation.js';
@@ -21,6 +22,7 @@ const ROUTES = [
   [/^\/?(vendre)?$/, vendre.afficher, 'vendre'],
   [/^\/ventes$/, vendre.afficherHistorique, 'vendre'],
   [/^\/articles$/, articles.afficher, 'articles'],
+  [/^\/factures$/, factures.afficher, 'factures'],
   [/^\/dettes$/, dettes.afficher, 'dettes'],
   [/^\/dettes\/([\w-]+)$/, dettes.afficherFiche, 'dettes'],
   [/^\/depenses$/, depenses.afficher, 'depenses'],

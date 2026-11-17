@@ -60,7 +60,8 @@ export async function afficher(racine) {
         h('span', { class: 'liste-ligne-corps' },
           h('span', { class: 'liste-ligne-titre' }, c.client.nom),
           h('span', { class: 'progression', style: 'margin:6px 0 4px' }, h('span', { style: `width:${pct.toFixed(0)}%` })),
-          h('span', { class: 'liste-ligne-sous' }, c.soldee ? 'Tout est payé' : `Depuis ${anciennete(c.plusAncienne).replace('il y a ', '')}`)),
+          h('span', { class: 'liste-ligne-sous' }, c.soldee ? 'Tout est payé'
+            : `${c.factures.length > 1 ? 'Factures' : 'Facture'} n° ${c.factures.join(', ')} · depuis ${anciennete(c.plusAncienne).replace('il y a ', '')}`)),
         h('span', { class: 'liste-ligne-fin' },
           c.soldee ? h('span', { class: 'badge badge-ok' }, 'Soldée')
             : h('span', { class: 'liste-ligne-montant negatif' }, fmMulti(c.reste, p.devise_principale)),
@@ -120,7 +121,7 @@ function ligneHistorique(p, client, e) {
     return h('button', { class: 'liste-ligne', onclick: versRapport, 'aria-label': `Achat à crédit du ${date}, voir le rapport du jour` },
       h('span', { class: 'icone-ronde negatif' }, icone('vendre', 20)),
       h('span', { class: 'liste-ligne-corps' },
-        h('span', { class: 'liste-ligne-titre' }, 'Achat à crédit'),
+        h('span', { class: 'liste-ligne-titre' }, e.numero ? `Facture n° ${e.numero} · à crédit` : 'Achat à crédit'),
         h('span', { class: 'liste-ligne-sous' }, articles),
         h('span', { class: 'liste-ligne-sous' }, date),
         d.acompte ? h('span', { class: 'liste-ligne-sous' }, `Acompte ${formater(d.acompte, d.devise)} sur ${formater(d.montant_vente, d.devise)}`) : null),

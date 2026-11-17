@@ -165,11 +165,11 @@ export async function afficherJour(racine, cle) {
   }
   if (r.nouvellesDettes.length) {
     racine.append(titreSection('Nouvelles dettes', r.nouvellesDettes.length),
-      h('div', { class: 'liste' }, ...r.nouvellesDettes.map(({ dette: d, client }) => h('a', { class: 'liste-ligne', href: `#/dettes/${client?.id}` },
+      h('div', { class: 'liste' }, ...r.nouvellesDettes.map(({ dette: d, client, numero }) => h('a', { class: 'liste-ligne', href: `#/dettes/${client?.id}` },
         h('span', { class: 'icone-ronde negatif' }, icone('dettes', 20)),
         h('span', { class: 'liste-ligne-corps' },
           h('span', { class: 'liste-ligne-titre' }, client?.nom || 'Client'),
-          h('span', { class: 'liste-ligne-sous' }, `Achat ${formater(d.montant_vente, d.devise)}${d.acompte ? ` · acompte ${formater(d.acompte, d.devise)}` : ''}`)),
+          h('span', { class: 'liste-ligne-sous' }, `${numero ? `Facture n° ${numero} · ` : ''}Achat ${formater(d.montant_vente, d.devise)}${d.acompte ? ` · acompte ${formater(d.acompte, d.devise)}` : ''}`)),
         h('span', { class: 'liste-ligne-fin' }, h('span', { class: 'liste-ligne-montant negatif' }, fm(d.montant, d.devise)), h('span', { class: 'legende' }, 'reste'))))));
   }
   if (r.depenses.length) {
@@ -197,7 +197,7 @@ function ligneVente({ vente: v, lignes, client, acompte }) {
   return h('button', { class: 'liste-ligne', onclick: () => ouvrirRecu(v.id) },
     h('span', { class: 'liste-ligne-corps' },
       h('span', { class: `liste-ligne-titre${v.annule_le ? ' barre-annule' : ''}` }, resume),
-      h('span', { class: 'liste-ligne-sous' }, `${heure(v.cree_le)}${client ? ' · ' + client.nom : ''}`)),
+      h('span', { class: 'liste-ligne-sous' }, `Facture n° ${v.numero} · ${heure(v.cree_le)}${client ? ' · ' + client.nom : ''}`)),
     h('span', { class: 'liste-ligne-fin' },
       h('span', { class: `liste-ligne-montant${v.annule_le ? ' barre-annule' : ''}` }, fmVente(v)),
       statut));

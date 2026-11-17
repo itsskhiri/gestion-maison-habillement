@@ -30,7 +30,11 @@ function carteStat(libelle, valeur, devise, actuel, precedent, { inverse = false
     tendance(actuel, precedent, inverse));
 }
 
-export async function afficher(racine) {
+// Conteneur réellement affiché : les changements de période et de filtre redessinent dedans.
+let hote = null;
+
+export async function afficher(racine, { redessin = false } = {}) {
+  if (!redessin) hote = racine;
   const p = await api.profil();
   const dev = p.devise_principale;
   const b = api.bornesPeriode(etatEcran.periode);
@@ -126,14 +130,14 @@ export async function afficher(racine) {
     zoneJournal);
   dessinerJournal(zoneJournal, journal, dev);
 
-  async function rafraichir() {
-    const conteneur = racine;
-    const y = window.scrollY;
-    const neuf = h('div', { class: 'ecran' });
-    await afficher(neuf);
-    conteneur.replaceChildren(...neuf.childNodes);
-    window.scrollTo(0, y);
-  }
+}
+
+async function rafraichir() {
+  const y = window.scrollY;
+  const neuf = h('div');
+  await afficher(neuf, { redessin: true });
+  hote.replaceChildren(...neuf.childNodes);
+  window.scrollTo(0, y);
 }
 
 function dessinerJournal(zone, journal, dev) {
