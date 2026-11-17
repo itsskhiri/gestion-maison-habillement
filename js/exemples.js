@@ -83,33 +83,33 @@ export function genererExemples(etat) {
       const quand = { date: isoPourJour(jour, entre(9, 18), entre(0, 59)) };
       if (!passe(quand)) continue;
       const mode = hasard() < 0.7 ? 'cash' : choisir(['mpesa', 'mpesa', 'airtel', 'orange']);
-      // Prix de vente discuté : entre 1,25 et 1,7 fois le prix d'achat, arrondi (1 $ ou 500 FC).
-      const marge = 1.25 + hasard() * 0.45;
-      const totalEn = (devise) => {
-        const cout = lignes.reduce((s, l) => {
-          const a = articles.find((x) => x.id === l.article_id);
-          return s + convertir(a.prix_achat, a.devise, devise, taux);
-        }, 0);
+      // Prix de vente discuté pour chaque produit : 1,25 à 1,7 fois le prix d'achat,
+      // arrondi au-dessus (1 $ ou 500 FC), jamais sous le prix d'achat.
+      const avecPrix = (devise) => lignes.map((l) => {
+        const a = articles.find((x) => x.id === l.article_id);
+        const achat = m.prixAchatEn(a, devise, taux);
         const pas = devise === 'USD' ? 100 : 500;
-        return Math.max(pas, Math.round((cout * marge) / pas) * pas);
-      };
+        return { ...l, prix_unitaire: Math.max(achat, Math.ceil((achat * (1.25 + hasard() * 0.45)) / pas) * pas) };
+      });
+      const totalDe = (lg) => lg.reduce((s, l) => s + l.quantite * l.prix_unitaire, 0);
       if (hasard() < 0.15) {
         const [nom, telephone] = choisir(CLIENTS);
+        const lg = avecPrix(p.devise_principale);
         const acompte = hasard() < 0.5
-          ? { devise: p.devise_principale, montant: Math.floor(totalEn(p.devise_principale) / 3), mode: 'cash' }
+          ? { devise: p.devise_principale, montant: Math.floor(totalDe(lg) / 3), mode: 'cash' }
           : null;
         const v = faire(m.creerVente(etat, {
-          devise: p.devise_principale, taux, lignes, total: totalEn(p.devise_principale),
+          devise: p.devise_principale, taux, lignes: lg,
           paiement: { type: 'credit', client: { nom, telephone }, acompte: acompte?.montant ? acompte : null },
         }, quand));
         dettesOuvertes.push({ client_id: v.client_id, jour: i });
       } else {
         // Un tiers des clients paient en francs, même pour les articles affichés en dollars.
         const devise = hasard() < 0.33 ? 'CDF' : 'USD';
-        const prix = totalEn(devise);
+        const lg = avecPrix(devise);
         faire(m.creerVente(etat, {
-          devise, taux, lignes, total: prix,
-          paiement: { type: 'payee', encaissements: [{ devise, montant: prix, mode }] },
+          devise, taux, lignes: lg,
+          paiement: { type: 'payee', encaissements: [{ devise, montant: totalDe(lg), mode }] },
         }, quand));
       }
     }

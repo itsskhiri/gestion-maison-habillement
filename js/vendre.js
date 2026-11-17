@@ -1,5 +1,6 @@
 // Écran VENDRE : grille d'articles (avec leur PRIX D'ACHAT), panier, puis validation où le vendeur
-// saisit lui-même le PRIX DE VENTE discuté avec le client (en $, en FC ou les deux),
+// saisit le PRIX DE VENTE de chaque produit discuté avec le client (vente invalide sous le prix
+// d'achat), paiement en $, en FC ou les deux,
 // paiement cash / Mobile Money, vente à crédit avec acompte, reçu à partager, annulation, historique.
 
 import * as api from './api.js';
@@ -7,16 +8,17 @@ import {
   h, icone, logo, pastille, boutonProfil, enTete, fm, num, puces, segment, saisie, champ, champMontant,
   ouvrirFeuille, confirmer, toast, erreur, vibrer, partager, enCours, etatVide, optionsModes, vider,
 } from './ui.js';
-import { convertir, formater, lireEntier } from './money.js';
+import { convertir, formater, lireEntier, toleranceConversion } from './money.js';
 import { CATEGORIES, modePaiement } from './reference.js';
 import { aujourdhui, heure, cleJour, libelleJour, dateNumerique } from './temps.js';
 import { ouvrirFormulaireArticle } from './articles.js';
 
 // État de l'écran conservé entre deux affichages (le panier ne se vide pas en changeant d'onglet).
 const etatEcran = {
-  panier: new Map(),   // article_id -> { quantite }
+  panier: new Map(),   // article_id -> { quantite, prix: prix de vente d'une pièce (devise de la vente) ou null }
   recherche: '',
   categorie: 'tout',
+  deviseVente: null,   // devise des prix de vente (par défaut : devise principale)
 };
 
 export async function afficher(racine) {
@@ -120,7 +122,7 @@ export async function afficher(racine) {
 
   function ajouter(a) {
     if (a.quantite <= 0) { toast(`« ${a.nom} » est épuisé.`); return; }
-    const x = etatEcran.panier.get(a.id) || { quantite: 0 };
+    const x = etatEcran.panier.get(a.id) || { quantite: 0, prix: null };
     if (x.quantite >= a.quantite) { toast(`Il ne reste que ${a.quantite} « ${a.nom} » en stock.`); return; }
     x.quantite++;
     etatEcran.panier.set(a.id, x);
@@ -159,21 +161,23 @@ export async function afficher(racine) {
   majBarre();
 }
 
-// Lignes du panier, avec leur coût d'achat dans la devise principale (au taux du jour).
+// Lignes du panier : prix d'achat d'une pièce et prix de vente saisi, dans la devise de la vente.
 function lignesPanier(ctx) {
+  const dev = deviseVente(ctx);
   return [...etatEcran.panier].filter(([id]) => ctx.parId.has(id)).map(([id, x]) => {
     const a = ctx.parId.get(id);
-    return { a, quantite: x.quantite, cout: convertir(a.prix_achat * x.quantite, a.devise, ctx.p.devise_principale, ctx.p.taux) };
+    const achat = convertir(a.prix_achat, a.devise, dev, ctx.p.taux);
+    return {
+      a, x, quantite: x.quantite, achat,
+      prix: x.prix ?? null,
+      total: x.prix != null ? x.prix * x.quantite : null,
+      invalide: x.prix != null && x.prix < achat,
+      cout: convertir(a.prix_achat * x.quantite, a.devise, ctx.p.devise_principale, ctx.p.taux),
+    };
   });
 }
 const coutPanier = (ctx) => lignesPanier(ctx).reduce((s, l) => s + l.cout, 0);
-
-// Phrase « bénéfice sur cette vente » (ou alerte de vente à perte).
-function phraseBenefice(prixPrincipal, cout, devise) {
-  const b = prixPrincipal - cout;
-  if (b >= 0) return { texte: `Bénéfice sur cette vente : ${formater(b, devise, { signe: true })}`, classe: 'positif' };
-  return { texte: `Attention : vente à perte (${formater(b, devise)})`, classe: 'negatif' };
-}
+const deviseVente = (ctx) => etatEcran.deviseVente ?? ctx.p.devise_principale;
 
 /* ---------- Panier ---------- */
 
@@ -191,7 +195,7 @@ function feuillePanier(ctx, majEcran) {
     return h('div', { class: 'pile' },
       h('div', {},
         ...lignes.map((l) => {
-          const x = etatEcran.panier.get(l.a.id);
+          const x = l.x;
           const moins = h('button', { class: 'btn-rond', 'aria-label': `Retirer un « ${l.a.nom} »`, onclick: () => {
             x.quantite--;
             if (x.quantite <= 0) etatEcran.panier.delete(l.a.id);
@@ -215,123 +219,243 @@ function feuillePanier(ctx, majEcran) {
   f.remplacer(contenu());
 }
 
-/* ---------- Validation : le vendeur saisit le prix de vente ---------- */
+/* ---------- Validation : un prix de vente pour CHAQUE produit ---------- */
+
+// Vérifie que chaque produit a un prix valide ; signale le premier problème.
+function verifierPrix(ctx, champsPrix) {
+  const lignes = lignesPanier(ctx);
+  const sansPrix = lignes.find((l) => l.prix == null);
+  if (sansPrix) {
+    champsPrix.get(sansPrix.a.id)?.signalerErreur();
+    throw new api.ErreurMetier(`Saisis le prix de vente de « ${sansPrix.a.nom} ».`);
+  }
+  const invalide = lignes.find((l) => l.invalide);
+  if (invalide) {
+    champsPrix.get(invalide.a.id)?.signalerErreur();
+    throw new api.ErreurMetier(`Vente invalide : « ${invalide.a.nom} » est sous son prix d'achat (${formater(invalide.achat, deviseVente(ctx))}).`);
+  }
+  return lignes;
+}
 
 function feuillePaiement(ctx) {
-  const lignes = lignesPanier(ctx);
-  if (!lignes.length) return;
+  if (!lignesPanier(ctx).length) return;
   const p = ctx.p;
-  const dev = p.devise_principale;
   const t = p.taux;
-  const cout = coutPanier(ctx);
   let mode = 'cash';
-  let recu = dev; // 'USD' | 'CDF' | 'mixte'
+  let recu = deviseVente(ctx); // 'USD' | 'CDF' | 'mixte'
+  const champsPrix = new Map();
 
-  const montantUSD = champMontant({ devise: 'USD', libelle: 'Montant en dollars', avecDevise: false, onSaisie: majBilan });
-  const montantFC = champMontant({ devise: 'CDF', libelle: 'Montant en francs', avecDevise: false, onSaisie: majBilan });
-  const zoneMontants = h('div', { class: 'duo duo-montants' }, montantUSD.el, montantFC.el);
-  const bilan = h('p', { class: 'champ-aide', 'aria-live': 'polite' });
+  const zoneLignes = h('div', { class: 'lignes-vente' });
+  const zoneTotal = h('div', { class: 'total-vente', 'aria-live': 'polite' });
+  const aPayer = h('div', { class: 'a-payer', 'aria-live': 'polite' });
 
-  function afficherChamps() {
-    montantUSD.el.hidden = recu === 'CDF';
-    montantFC.el.hidden = recu === 'USD';
-    zoneMontants.classList.toggle('duo', recu === 'mixte');
-    if (recu !== 'mixte') (recu === 'USD' ? montantFC : montantUSD).definir(null);
-    majBilan();
-  }
-
-  // Prix de vente saisi : devise de la vente, montant, valeur en devise principale, encaissements.
-  function prixSaisi() {
-    const u = recu !== 'CDF' ? montantUSD.lire() : null;
-    const fc = recu !== 'USD' ? montantFC.lire() : null;
-    if (recu === 'USD') return u ? { devise: 'USD', total: u, enc: [{ devise: 'USD', montant: u, mode }] } : null;
-    if (recu === 'CDF') return fc ? { devise: 'CDF', total: fc, enc: [{ devise: 'CDF', montant: fc, mode }] } : null;
-    if (!u || !fc) return null;
-    return {
-      devise: dev,
-      total: convertir(u, 'USD', dev, t) + convertir(fc, 'CDF', dev, t),
-      enc: [{ devise: 'USD', montant: u, mode }, { devise: 'CDF', montant: fc, mode }],
-    };
-  }
-
-  function majBilan() {
-    const x = prixSaisi();
-    if (!x) {
-      bilan.className = 'champ-aide';
-      bilan.textContent = recu === 'mixte' ? 'Saisis la partie en dollars et la partie en francs.' : 'Saisis le prix convenu avec le client.';
-      return;
+  // --- Prix de chaque produit ---
+  function dessinerLignes() {
+    const dev = deviseVente(ctx);
+    champsPrix.clear();
+    vider(zoneLignes);
+    for (const l of lignesPanier(ctx)) {
+      const etat = h('p', { class: 'ligne-vente-etat' });
+      const totalLigne = h('span', { class: 'ligne-vente-total num' });
+      const champPrix = champMontant({
+        devise: dev, valeur: l.prix, avecDevise: false, libelle: `Prix de vente / pièce`,
+        onSaisie: () => { l.x.prix = champPrix.lire(); majLigne(); majTotal(); },
+      });
+      champPrix.entree.setAttribute('aria-label', `Prix de vente de « ${l.a.nom} », une pièce`);
+      champsPrix.set(l.a.id, champPrix);
+      const bloc = h('div', { class: 'ligne-vente' },
+        h('div', { class: 'ligne-vente-tete' },
+          h('span', { class: 'ligne-vente-nom' }, l.a.nom, l.quantite > 1 ? h('span', { class: 'ligne-vente-qte' }, ` × ${l.quantite}`) : null),
+          totalLigne),
+        h('span', { class: 'ligne-vente-achat' }, `Prix d'achat : ${formater(l.achat, dev)} / pièce`),
+        champPrix.el,
+        etat);
+      function majLigne() {
+        const prix = l.x.prix;
+        const invalide = prix != null && prix < l.achat;
+        bloc.classList.toggle('invalide', invalide);
+        totalLigne.textContent = prix != null ? formater(prix * l.quantite, dev) : '';
+        if (invalide) {
+          etat.className = 'ligne-vente-etat negatif';
+          etat.textContent = `Vente invalide : prix inférieur au prix d'achat (${formater(l.achat, dev)})`;
+        } else if (prix != null) {
+          etat.className = 'ligne-vente-etat positif';
+          etat.textContent = `Bénéfice : ${formater((prix - l.achat) * l.quantite, dev, { signe: true })}`;
+        } else {
+          etat.className = 'ligne-vente-etat';
+          etat.textContent = '';
+        }
+      }
+      majLigne();
+      zoneLignes.append(bloc);
     }
-    const prixP = convertir(x.total, x.devise, dev, t);
-    const b = phraseBenefice(prixP, cout, dev);
-    const detail = recu === 'mixte' ? `Total : ${formater(prixP, dev)}. ` : '';
-    bilan.className = `champ-aide ${b.classe}`;
-    bilan.textContent = detail + b.texte;
+  }
+
+  // --- Total, bénéfice et ce que le client donne ---
+  function totalSaisi() {
+    const lignes = lignesPanier(ctx);
+    if (lignes.some((l) => l.prix == null)) return null;
+    return lignes.reduce((s, l) => s + l.total, 0);
+  }
+
+  function majTotal() {
+    const dev = deviseVente(ctx);
+    const lignes = lignesPanier(ctx);
+    const manquants = lignes.filter((l) => l.prix == null).length;
+    const invalides = lignes.filter((l) => l.invalide).length;
+    const total = totalSaisi();
+    vider(zoneTotal);
+    if (invalides) {
+      zoneTotal.append(h('p', { class: 'champ-aide negatif' }, `Vente invalide : ${invalides} produit${invalides > 1 ? 's sont vendus' : ' est vendu'} sous le prix d'achat. Corrige le prix en rouge.`));
+    } else if (manquants) {
+      zoneTotal.append(h('p', { class: 'champ-aide' }, `Saisis le prix de vente de ${manquants > 1 ? `${manquants} produits` : 'ce produit'}.`));
+    }
+    if (total != null) {
+      const benefice = convertir(total, dev, p.devise_principale, t) - coutPanier(ctx);
+      zoneTotal.append(h('div', { class: 'rangee-espace' }, h('span', { class: 'sous-titre' }, 'Total'), h('span', { class: 'chiffre-l' }, fm(total, dev))));
+      if (!invalides) {
+        zoneTotal.append(h('p', { class: `champ-aide ${benefice >= 0 ? 'positif' : 'negatif'}`, style: 'text-align:right' },
+          `Bénéfice : ${formater(benefice, p.devise_principale, { signe: true })}`));
+      }
+    }
+    majAPayer();
+  }
+
+  // --- Paiement : dollars, francs ou les deux ---
+  const totalEn = (devise) => { const tot = totalSaisi(); return tot == null ? null : convertir(tot, deviseVente(ctx), devise, t); };
+  const bilanMixte = h('p', { class: 'champ-aide', 'aria-live': 'polite' });
+  const partieUSD = champMontant({ devise: 'USD', libelle: 'Combien en dollars ?', avecDevise: false, onSaisie: () => completer('USD') });
+  const partieFC = champMontant({ devise: 'CDF', libelle: 'Combien en francs ?', avecDevise: false, onSaisie: () => completer('CDF') });
+  const zoneMixte = h('div', { class: 'pile-serree', hidden: true }, h('div', { class: 'duo duo-montants' }, partieUSD.el, partieFC.el), bilanMixte);
+  const saisiMain = { USD: false, CDF: false };
+
+  function completer(source) {
+    const dev = deviseVente(ctx);
+    const total = totalSaisi();
+    const champSource = source === 'USD' ? partieUSD : partieFC;
+    saisiMain[source] = champSource.entree.value.trim() !== '';
+    if (total != null) {
+      if (source === 'USD' && !saisiMain.CDF) {
+        const u = partieUSD.lire();
+        partieFC.definir(u && u < totalEn('USD') ? (dev === 'USD' ? convertir(total - u, 'USD', 'CDF', t) : total - convertir(u, 'USD', 'CDF', t)) : null);
+      } else if (source === 'CDF' && !saisiMain.USD) {
+        const fc = partieFC.lire();
+        partieUSD.definir(fc && fc < totalEn('CDF') ? (dev === 'USD' ? total - convertir(fc, 'CDF', 'USD', t) : convertir(total - fc, 'CDF', 'USD', t)) : null);
+      }
+    }
+    majBilanMixte();
+  }
+
+  function ecartMixte() {
+    const dev = deviseVente(ctx);
+    const u = partieUSD.lire() || 0;
+    const fc = partieFC.lire() || 0;
+    const recuTotal = convertir(u, 'USD', dev, t) + convertir(fc, 'CDF', dev, t);
+    const marge = (u && dev !== 'USD' ? toleranceConversion('USD', dev, t) : 0) + (fc && dev !== 'CDF' ? toleranceConversion('CDF', dev, t) : 0);
+    return { u, fc, ecart: recuTotal - (totalSaisi() ?? 0), marge };
+  }
+
+  function majBilanMixte() {
+    const dev = deviseVente(ctx);
+    const { u, fc, ecart, marge } = ecartMixte();
+    if ((!u && !fc) || totalSaisi() == null) { bilanMixte.className = 'champ-aide'; bilanMixte.textContent = ''; return; }
+    if (Math.abs(ecart) <= marge) {
+      bilanMixte.className = 'champ-aide positif';
+      bilanMixte.textContent = `Le compte est bon : ${formater(u, 'USD')} + ${formater(fc, 'CDF')}`;
+    } else if (ecart < 0) {
+      bilanMixte.className = 'champ-aide negatif';
+      bilanMixte.textContent = `Il manque ${formater(-ecart, dev)}`;
+    } else {
+      bilanMixte.className = 'champ-aide attention';
+      bilanMixte.textContent = `C'est ${formater(ecart, dev)} de trop`;
+    }
+  }
+
+  function majAPayer() {
+    aPayer.hidden = recu === 'mixte' || totalSaisi() == null;
+    zoneMixte.hidden = recu !== 'mixte';
+    if (recu === 'mixte') { majBilanMixte(); return; }
+    if (totalSaisi() == null) return;
+    aPayer.replaceChildren(h('span', { class: 'texte-2' }, 'Le client donne'), h('strong', { class: 'chiffre-m' }, fm(totalEn(recu), recu)));
+  }
+
+  function encaissements() {
+    const dev = deviseVente(ctx);
+    if (recu !== 'mixte') return [{ devise: recu, montant: totalEn(recu), mode }];
+    const { u, fc, ecart, marge } = ecartMixte();
+    if (!u) { partieUSD.signalerErreur(); throw new api.ErreurMetier('Saisis combien le client paie en dollars.'); }
+    if (!fc) { partieFC.signalerErreur(); throw new api.ErreurMetier('Saisis combien le client paie en francs.'); }
+    if (Math.abs(ecart) > marge) {
+      throw new api.ErreurMetier(ecart < 0 ? `Il manque ${formater(-ecart, dev)} pour payer le total.` : `C'est ${formater(ecart, dev)} de trop : corrige les montants.`);
+    }
+    return [{ devise: 'USD', montant: u, mode }, { devise: 'CDF', montant: fc, mode }];
   }
 
   const payer = h('button', { class: 'btn btn-principal btn-grand btn-bloc' }, icone('coche', 22), 'Payé');
   payer.addEventListener('click', enCours(payer, async () => {
     try {
-      const x = prixSaisi();
-      if (!x) {
-        const vide = recu === 'CDF' || (recu === 'mixte' && montantUSD.lire()) ? montantFC : montantUSD;
-        vide.signalerErreur();
-        throw new api.ErreurMetier(recu === 'mixte' ? 'Saisis les deux montants : dollars et francs.' : 'Saisis le prix de vente.');
-      }
-      if (!(await accepterPerte(convertir(x.total, x.devise, dev, t), cout, dev))) return;
-      await enregistrerVente(ctx, { devise: x.devise, total: x.total, paiement: { type: 'payee', encaissements: x.enc } }, f);
+      verifierPrix(ctx, champsPrix);
+      await enregistrerVente(ctx, { type: 'payee', encaissements: encaissements() }, f);
     } catch (e) { erreur(e); }
   }));
+  const credit = h('button', { class: 'btn btn-secondaire btn-grand btn-bloc' }, 'À crédit');
+  credit.addEventListener('click', () => {
+    try {
+      verifierPrix(ctx, champsPrix);
+      f.fermer();
+      feuilleCredit(ctx);
+    } catch (e) { erreur(e); }
+  });
+
+  // Choix « Le client paie en », recréé quand la devise des prix change.
+  function creerSegmentRecu() {
+    return segment([{ id: 'USD', libelle: 'Dollars' }, { id: 'CDF', libelle: 'Francs' }, { id: 'mixte', libelle: '$ + FC' }], recu, (r) => {
+      recu = r;
+      majAPayer();
+      if (r === 'mixte') partieUSD.entree.focus();
+    }, { libelle: 'Devise reçue' });
+  }
+  let segmentRecu = creerSegmentRecu();
 
   const f = ouvrirFeuille({
     titre: 'Valider la vente',
     contenu: h('div', { class: 'pile' },
-      h('div', { class: 'a-payer' },
-        h('span', { class: 'texte-2' }, `Prix d'achat (${lignes.reduce((s, l) => s + l.quantite, 0)} art.)`),
-        h('strong', { class: 'num' }, fm(cout, dev))),
       h('div', { class: 'champ' },
-        h('span', { class: 'champ-libelle' }, 'Le client paie en'),
-        segment([{ id: 'USD', libelle: 'Dollars' }, { id: 'CDF', libelle: 'Francs' }, { id: 'mixte', libelle: '$ + FC' }], recu, (r) => {
-          recu = r;
-          afficherChamps();
-          (r === 'CDF' ? montantFC : montantUSD).entree.focus();
-        }, { libelle: 'Devise reçue' })),
-      h('div', { class: 'champ' },
-        h('span', { class: 'champ-libelle' }, 'Prix de vente convenu'),
-        zoneMontants,
-        bilan),
+        h('span', { class: 'champ-libelle' }, 'Prix de vente en'),
+        segment([{ id: 'USD', libelle: 'Dollars' }, { id: 'CDF', libelle: 'Francs' }], deviseVente(ctx), (d) => {
+          const avant = deviseVente(ctx);
+          for (const x of etatEcran.panier.values()) if (x.prix != null) x.prix = convertir(x.prix, avant, d, t);
+          etatEcran.deviseVente = d;
+          if (recu !== 'mixte') recu = d;
+          const nouveau = creerSegmentRecu();
+          segmentRecu.replaceWith(nouveau);
+          segmentRecu = nouveau;
+          dessinerLignes();
+          majTotal();
+        }, { libelle: 'Devise des prix de vente' })),
+      zoneLignes,
+      zoneTotal,
+      h('div', { class: 'champ' }, h('span', { class: 'champ-libelle' }, 'Le client paie en'), segmentRecu),
+      aPayer,
+      zoneMixte,
       h('div', { class: 'champ' },
         h('span', { class: 'champ-libelle' }, 'Mode de paiement'),
-        puces(optionsModes(), mode, (m) => { mode = m || 'cash'; majBilan(); }, { libelle: 'Mode de paiement' })),
+        puces(optionsModes(), mode, (m) => { mode = m || 'cash'; }, { libelle: 'Mode de paiement' })),
       payer,
-      h('button', {
-        class: 'btn btn-secondaire btn-grand btn-bloc',
-        onclick: () => {
-          const x = prixSaisi();
-          f.fermer();
-          feuilleCredit(ctx, x && recu !== 'mixte' ? { devise: x.devise, total: x.total } : null);
-        },
-      }, 'À crédit')),
+      credit),
   });
-  afficherChamps();
-  setTimeout(() => (recu === 'CDF' ? montantFC : montantUSD).entree.focus(), 260);
+  dessinerLignes();
+  majTotal();
+  setTimeout(() => champsPrix.values().next().value?.entree.focus(), 260);
 }
 
-// Demande confirmation avant d'enregistrer une vente à perte (évite une faute de frappe).
-async function accepterPerte(prixP, cout, dev) {
-  if (prixP >= cout) return true;
-  return confirmer({
-    titre: 'Vendre à perte ?',
-    message: `Le prix de vente (${formater(prixP, dev)}) est plus bas que le prix d'achat (${formater(cout, dev)}). Vérifie le montant saisi.`,
-    ok: 'Oui, vendre quand même', annuler: 'Corriger le prix',
-  });
-}
-
-async function enregistrerVente(ctx, vente, feuille) {
+async function enregistrerVente(ctx, paiement, feuille) {
   const lignes = lignesPanier(ctx);
   const entree = {
-    ...vente,
+    devise: deviseVente(ctx),
     taux: ctx.p.taux,
-    lignes: lignes.map((l) => ({ article_id: l.a.id, quantite: l.quantite })),
+    lignes: lignes.map((l) => ({ article_id: l.a.id, quantite: l.quantite, prix_unitaire: l.prix })),
+    paiement,
   };
   // Le panier est vidé AVANT l'enregistrement (l'écran se redessine aussitôt après),
   // et remis tel quel si l'enregistrement est refusé.
@@ -355,13 +479,12 @@ async function enregistrerVente(ctx, vente, feuille) {
   });
 }
 
-/* ---------- Vente à crédit ---------- */
+/* ---------- Vente à crédit (les prix de chaque produit sont déjà saisis) ---------- */
 
-async function feuilleCredit(ctx, prixInitial) {
-  const p = ctx.p;
-  const dev = p.devise_principale;
-  const t = p.taux;
-  const cout = coutPanier(ctx);
+async function feuilleCredit(ctx) {
+  const dev = deviseVente(ctx);
+  const t = ctx.p.taux;
+  const total = lignesPanier(ctx).reduce((s, l) => s + l.total, 0);
   const clients = await api.listerClients();
   let choisi = null; // id d'un client existant
   let modeAcompte = 'cash';
@@ -371,30 +494,16 @@ async function feuilleCredit(ctx, prixInitial) {
   const zoneTel = h('div', { hidden: true }, telephone);
   const listeClients = h('div', { class: 'choix-client', role: 'list' });
   const reste = h('p', { class: 'texte-2' });
-  const benefice = h('p', { class: 'champ-aide' });
-  const prix = champMontant({
-    devise: prixInitial?.devise ?? dev, valeur: prixInitial?.total ?? null,
-    libelle: 'Prix de vente convenu', onSaisie: majReste,
-  });
   const acompte = champMontant({ devise: dev, libelle: 'Acompte payé maintenant (facultatif)', onSaisie: majReste });
   const zoneModeAcompte = h('div', { class: 'champ', hidden: true },
     h('span', { class: 'champ-libelle' }, 'Acompte reçu par'),
     puces(optionsModes(), modeAcompte, (m) => { modeAcompte = m || 'cash'; }, { libelle: 'Mode de paiement de l’acompte' }));
 
   function majReste() {
-    const total = prix.lire();
     const a = acompte.lire();
+    const contre = a ? convertir(a, acompte.devise(), dev, t) : 0;
     zoneModeAcompte.hidden = !a;
-    if (!total) {
-      benefice.textContent = '';
-      reste.textContent = 'Saisis le prix convenu avec le client.';
-      return;
-    }
-    const b = phraseBenefice(convertir(total, prix.devise(), dev, t), cout, dev);
-    benefice.className = `champ-aide ${b.classe}`;
-    benefice.textContent = b.texte;
-    const contre = a ? convertir(a, acompte.devise(), prix.devise(), t) : 0;
-    reste.replaceChildren('Reste à crédit : ', h('strong', { class: 'num' }, fm(Math.max(0, total - contre), prix.devise())));
+    reste.replaceChildren('Reste à crédit : ', h('strong', { class: 'num' }, fm(Math.max(0, total - contre), dev)));
   }
 
   function dessinerClients() {
@@ -432,19 +541,12 @@ async function feuilleCredit(ctx, prixInitial) {
   valider.addEventListener('click', enCours(valider, async () => {
     try {
       if (!choisi && !nom.value.trim()) { nom.classList.add('invalide'); nom.focus(); throw new api.ErreurMetier('Choisis le client ou saisis son nom.'); }
-      const total = prix.lire();
-      if (!total) { prix.signalerErreur(); throw new api.ErreurMetier('Saisis le prix de vente convenu.'); }
       const a = acompte.lire();
       if (acompte.entree.value.trim() && a == null) { acompte.signalerErreur(); throw new api.ErreurMetier("Le montant de l'acompte n'est pas valide."); }
-      if (!(await accepterPerte(convertir(total, prix.devise(), dev, t), cout, dev))) return;
       await enregistrerVente(ctx, {
-        devise: prix.devise(),
-        total,
-        paiement: {
-          type: 'credit',
-          client: choisi ? { id: choisi } : { nom: nom.value, telephone: telephone.value },
-          acompte: a ? { devise: acompte.devise(), montant: a, mode: modeAcompte } : null,
-        },
+        type: 'credit',
+        client: choisi ? { id: choisi } : { nom: nom.value, telephone: telephone.value },
+        acompte: a ? { devise: acompte.devise(), montant: a, mode: modeAcompte } : null,
       }, f);
     } catch (e) { erreur(e); }
   }));
@@ -452,13 +554,10 @@ async function feuilleCredit(ctx, prixInitial) {
   const f = ouvrirFeuille({
     titre: 'Vente à crédit',
     contenu: h('div', { class: 'pile' },
-      h('div', { class: 'a-payer' },
-        h('span', { class: 'texte-2' }, 'Prix d’achat'),
-        h('strong', { class: 'num' }, fm(cout, dev))),
+      h('div', { class: 'a-payer' }, h('span', { class: 'texte-2' }, 'Total de la vente'), h('strong', { class: 'chiffre-m' }, fm(total, dev))),
       champ('Client', nom),
       zoneTel,
       listeClients,
-      h('div', { class: 'pile-serree' }, prix.el, benefice),
       acompte.el,
       zoneModeAcompte,
       reste,
@@ -474,7 +573,7 @@ async function feuilleCredit(ctx, prixInitial) {
 function texteRecu(d, p) {
   const v = d.vente;
   const L = [`*${p.nom_boutique}*`, `Reçu du ${dateNumerique(v.cree_le)} à ${heure(v.cree_le)}`, ''];
-  for (const l of d.lignes) L.push(`${l.quantite} × ${l.nom}`);
+  for (const l of d.lignes) L.push(`${l.quantite} × ${l.nom} : ${formater(l.quantite * l.prix_unitaire, v.devise)}`);
   L.push('', `*Total : ${formater(v.total, v.devise)}*`);
   if (v.statut === 'payee') {
     for (const e of d.encaissements.filter((x) => !x.annule_le)) L.push(`Payé (${modePaiement(e.mode)?.nom}) : ${formater(e.montant, e.devise)}`);
@@ -515,7 +614,9 @@ export async function ouvrirRecu(id, { nouvelle = false } = {}) {
           h('span', { class: 'texte-2' }, `${libelleJour(cleJour(v.cree_le))} · ${heure(v.cree_le)}`),
           v.annule_le ? h('span', { class: 'badge badge-zero' }, `Annulée à ${heure(v.annule_le)}`) : null),
         h('div', { class: `recu-lignes${v.annule_le ? ' barre-annule' : ''}` },
-          ...d.lignes.map((l) => h('div', { class: 'recu-ligne' }, h('span', {}, `${l.quantite} × ${l.nom}`)))),
+          ...d.lignes.map((l) => h('div', { class: 'recu-ligne' },
+            h('span', {}, `${l.quantite} × ${l.nom}`),
+            h('span', {}, fm(l.quantite * l.prix_unitaire, v.devise))))),
         h('div', { class: `recu-total${v.annule_le ? ' barre-annule' : ''}` }, h('span', {}, 'Total'), h('span', { class: 'num' }, fm(v.total, v.devise))),
         h('div', { class: 'recu-pied' }, ...pied)),
       !v.annule_le ? h('p', { class: `champ-aide ${benefice < 0 ? 'negatif' : 'positif'}`, style: 'text-align:center' },

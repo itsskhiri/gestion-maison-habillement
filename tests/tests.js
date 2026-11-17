@@ -48,9 +48,9 @@ function boutique(devise = 'CDF') {
   return { e, robe, jean };
 }
 const solde = (e) => m.soldeCaisse(e);
-// Vente payée simple : `total` dans la devise de la vente (francs par défaut).
+// Vente d'un seul produit : `total` = quantité × prix d'une pièce (devise de la vente, francs par défaut).
 const vendre = (e, article, quantite, total, extra = {}, opts) =>
-  m.creerVente(e, { lignes: [{ article_id: article.id, quantite }], total, ...extra }, opts).resultat;
+  m.creerVente(e, { lignes: [{ article_id: article.id, quantite, prix_unitaire: total / quantite }], ...extra }, opts).resultat;
 
 /* ---------- Montants exacts ---------- */
 
@@ -86,12 +86,25 @@ test('Fuseau : une vente à 23 h 30 à Bukavu compte bien pour ce jour-là', () 
 
 /* ---------- Prix d'achat et prix de vente négocié ---------- */
 
-test('Prix de vente saisi par le vendeur : obligatoire et positif', () => {
+test('Prix de vente de chaque produit : obligatoire, entier, positif', () => {
   const { e, robe } = boutique();
   refuse(() => m.creerVente(e, { lignes: [{ article_id: robe.id, quantite: 1 }] }), 'prix de vente');
   refuse(() => vendre(e, robe, 1, 0));
-  refuse(() => vendre(e, robe, 1, 12.5));
+  refuse(() => vendre(e, robe, 1, 40000.5));
   egal(robe.quantite, 5, 'rien n’a changé');
+});
+
+test('Vente invalide si un produit est vendu sous son prix d’achat (même un seul sur plusieurs)', () => {
+  const { e, robe, jean } = boutique();
+  refuse(() => vendre(e, robe, 1, 29999), 'Vente invalide');
+  // jean acheté 12 $ = 34 200 FC : 34 199 FC refusé, 34 200 accepté
+  refuse(() => m.creerVente(e, { lignes: [
+    { article_id: robe.id, quantite: 1, prix_unitaire: 45000 },
+    { article_id: jean.id, quantite: 1, prix_unitaire: 34199 },
+  ] }), 'Jean');
+  egal(e.ventes.length, 0, 'rien n’est enregistré');
+  vendre(e, jean, 1, 34200);
+  egal(e.ventes.length, 1, 'vendu exactement au prix d’achat : accepté');
 });
 
 test('Vente négociée : caisse = prix convenu, bénéfice = prix − prix d’achat', () => {
@@ -110,27 +123,24 @@ test('Vente négociée : caisse = prix convenu, bénéfice = prix − prix d’a
   egal(e.lignes_de_vente[0].nom, 'Robe');
 });
 
-test('Vente à perte : acceptée, bénéfice négatif', () => {
-  const { e, robe } = boutique();
-  vendre(e, robe, 1, 25000);
-  egal(m.statsPeriode(e, ...TOUT).benefice, -5000);
-});
-
 test('Article acheté en dollars, vendu en francs : coût converti au taux de la vente', () => {
   const { e, jean } = boutique();
-  const v = vendre(e, jean, 1, 50000, { devise: 'CDF', taux: 2900 });
+  const v = vendre(e, jean, 1, 50000, { taux: 2900 });
   egal(v.cout_principal, 34800); // 12 $ × 2 900
   egal(m.statsPeriode(e, ...TOUT).marge, 15200);
 });
 
-test('Plusieurs articles : prix de vente réparti par catégorie au prorata du coût', () => {
+test('Plusieurs produits, chacun avec son prix : total, bénéfice et catégories exacts', () => {
   const { e, robe, jean } = boutique();
-  // coût : robe 30 000 + jean 34 200 (12 $) = 64 200 ; vendu 100 000
-  m.creerVente(e, { lignes: [{ article_id: robe.id, quantite: 1 }, { article_id: jean.id, quantite: 1 }], total: 100000 });
+  const v = m.creerVente(e, { lignes: [
+    { article_id: robe.id, quantite: 2, prix_unitaire: 40000 },
+    { article_id: jean.id, quantite: 1, prix_unitaire: 45000 },
+  ] }).resultat;
+  egal(v.total, 125000);
+  egal(m.statsPeriode(e, ...TOUT).benefice, 125000 - 60000 - 34200);
   const cats = m.ventesParCategorie(e, ...TOUT);
-  egal(cats.reduce((t, c) => t + c.valeur, 0), 100000, 'somme exacte');
-  egal(cats.map((c) => c.id), ['pantalons', 'robes']);
-  egal(m.meilleuresVentes(e, ...TOUT).length, 2);
+  egal(cats.map((c) => [c.id, c.valeur]), [['robes', 80000], ['pantalons', 45000]]);
+  egal(e.lignes_de_vente.map((l) => l.prix_unitaire), [40000, 45000], 'prix de chaque produit conservés');
 });
 
 test('Paiement mixte dollars + francs', () => {
@@ -165,8 +175,8 @@ test('Paiement mixte : arrondi du dollar au centime accepté, vrai écart refus�
 
 test('Stock jamais négatif', () => {
   const { e, jean } = boutique();
-  refuse(() => vendre(e, jean, 3, 90000), 'Stock insuffisant');
-  refuse(() => m.creerVente(e, { lignes: [{ article_id: jean.id, quantite: 2 }, { article_id: jean.id, quantite: 1 }], total: 90000 }), 'Stock insuffisant');
+  refuse(() => vendre(e, jean, 3, 135000), 'Stock insuffisant');
+  refuse(() => m.creerVente(e, { lignes: [{ article_id: jean.id, quantite: 2, prix_unitaire: 45000 }, { article_id: jean.id, quantite: 1, prix_unitaire: 45000 }] }), 'Stock insuffisant');
   vendre(e, jean, 2, 90000);
   egal(jean.quantite, 0, 'stock à zéro');
   refuse(() => vendre(e, jean, 1, 45000));
@@ -178,7 +188,7 @@ test('Stock jamais négatif', () => {
 test('Une vente refusée ne modifie rien (tout ou rien)', () => {
   const { e, robe, jean } = boutique();
   const avant = JSON.stringify(e);
-  refuse(() => m.creerVente(e, { lignes: [{ article_id: robe.id, quantite: 1 }, { article_id: jean.id, quantite: 9 }], total: 1000 }));
+  refuse(() => m.creerVente(e, { lignes: [{ article_id: robe.id, quantite: 1, prix_unitaire: 45000 }, { article_id: jean.id, quantite: 9, prix_unitaire: 45000 }] }));
   egal(JSON.stringify(e), avant);
 });
 
@@ -196,8 +206,8 @@ test('Annulation de vente : stock rendu, caisse corrigée, trace conservée', ()
 test('Même identifiant envoyé deux fois : une seule vente (pas de doublon)', () => {
   const { e, robe } = boutique();
   const id = m.uuid();
-  m.creerVente(e, { id, lignes: [{ article_id: robe.id, quantite: 1 }], total: 45000 });
-  m.creerVente(e, { id, lignes: [{ article_id: robe.id, quantite: 1 }], total: 45000 });
+  m.creerVente(e, { id, lignes: [{ article_id: robe.id, quantite: 1, prix_unitaire: 45000 }] });
+  m.creerVente(e, { id, lignes: [{ article_id: robe.id, quantite: 1, prix_unitaire: 45000 }] });
   egal(e.ventes.length, 1);
   egal(robe.quantite, 4);
 });
@@ -358,7 +368,7 @@ test('Saisies invalides refusées', () => {
   refuse(() => m.ajouterArticle(e, { nom: 'A', prix_achat: 1.5, devise: 'CDF', quantite: 1 }));
   refuse(() => m.ajouterArticle(e, { nom: 'A', prix_achat: 100, devise: 'EUR', quantite: 1 }));
   refuse(() => vendre(e, robe, 0, 1000));
-  refuse(() => m.creerVente(e, { lignes: [], total: 1000 }), 'vide');
+  refuse(() => m.creerVente(e, { lignes: [] }), 'vide');
 });
 
 test('Exemples de démonstration cohérents (stock, caisse, dettes, bénéfice)', () => {

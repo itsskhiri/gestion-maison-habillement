@@ -93,12 +93,9 @@ export function exigerProfil(etat) {
   return etat.profil;
 }
 
-// Répartit `total` selon des poids, en entiers, avec une somme exacte.
-function repartirProportionnel(poids, total) {
-  const somme = poids.reduce((a, b) => a + b, 0) || 1;
-  const parts = poids.map((w) => Math.floor((w * total) / somme));
-  parts[parts.length - 1] += total - parts.reduce((a, b) => a + b, 0);
-  return parts;
+// Prix d'achat d'une pièce exprimé dans une devise de vente (arrondi au plus proche).
+export function prixAchatEn(article, devise, taux) {
+  return convertir(article.prix_achat, article.devise, devise, taux);
 }
 
 // Ajuste le dernier montant pour que la somme soit exactement `total` (écarts d'arrondi).
@@ -236,11 +233,11 @@ function resoudreClient(etat, c, quand) {
 /* ---------- Ventes ---------- */
 
 // Le prix d'un article est son PRIX D'ACHAT. Le prix de vente se discute avec le client :
-// le vendeur saisit le montant total convenu (`total`) au moment de valider.
+// le vendeur saisit le prix de vente de CHAQUE produit au moment de valider. Une ligne vendue
+// en dessous de son prix d'achat rend la vente invalide.
 // entree = {
 //   id?, devise?, taux?,
-//   lignes: [{ article_id, quantite }],
-//   total: prix de vente convenu, dans la devise de la vente (obligatoire)
+//   lignes: [{ article_id, quantite, prix_unitaire }],   prix de vente d'une pièce, devise de la vente
 //   paiement: { type: 'payee', encaissements?: [{ devise, montant, mode }] }
 //           | { type: 'credit', client: { id? | nom, telephone? }, acompte?: { devise, montant, mode } }
 // }
@@ -260,16 +257,21 @@ export function creerVente(etat, entree, opts) {
     const a = articlesActifs(etat).find((x) => x.id === lg.article_id);
     if (!a) echec("Un article du panier n'existe plus.");
     const quantite = entier(lg.quantite, 'La quantité', 1, 100000);
+    if (lg.prix_unitaire == null || lg.prix_unitaire === '') echec(`Saisis le prix de vente de « ${a.nom} ».`);
+    const prix = entier(lg.prix_unitaire, `Le prix de vente de « ${a.nom} »`, 1);
+    const achat = prixAchatEn(a, devise, taux);
+    if (prix < achat) {
+      echec(`Vente invalide : « ${a.nom} » est vendu ${formater(prix, devise)}, sous son prix d'achat (${formater(achat, devise)}).`);
+    }
     besoin.set(a.id, (besoin.get(a.id) || 0) + quantite);
     // Coût d'achat de la ligne, dans la devise principale, au taux de la vente.
-    return { a, quantite, cout: convertir(a.prix_achat * quantite, a.devise, p.devise_principale, taux) };
+    return { a, quantite, prix, cout: convertir(a.prix_achat * quantite, a.devise, p.devise_principale, taux) };
   });
   for (const [aid, q] of besoin) {
     const a = etat.articles.find((x) => x.id === aid);
     if (q > a.quantite) echec(`Stock insuffisant pour « ${a.nom} » (il en reste ${a.quantite}).`);
   }
-  if (entree.total == null || entree.total === '') echec('Saisis le prix de vente.');
-  const total = entier(entree.total, 'Le prix de vente', 1);
+  const total = lignes.reduce((s, x) => s + x.quantite * x.prix, 0);
   const total_principal = convertir(total, devise, p.devise_principale, taux);
   const cout_principal = lignes.reduce((s, x) => s + x.cout, 0);
 
@@ -316,11 +318,13 @@ export function creerVente(etat, entree, opts) {
   };
   l.inserer('ventes', vente);
 
-  // Le prix de vente est réparti entre les lignes selon leur coût (pour les ventes par catégorie).
-  const principaux = repartirProportionnel(lignes.map((x) => x.cout || x.quantite), total_principal);
+  const principaux = repartir(
+    lignes.map((x) => convertir(x.quantite * x.prix, devise, p.devise_principale, taux)),
+    total_principal,
+  );
   lignes.forEach((x, i) => l.inserer('lignes_de_vente', {
     id: uuid(), vente_id: id, article_id: x.a.id, nom: x.a.nom, categorie: x.a.categorie,
-    quantite: x.quantite, cout_principal: x.cout, montant_principal: principaux[i],
+    quantite: x.quantite, prix_unitaire: x.prix, cout_principal: x.cout, montant_principal: principaux[i],
   }));
 
   for (const [aid, q] of besoin) {
