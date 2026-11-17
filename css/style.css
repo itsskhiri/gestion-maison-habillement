@@ -191,9 +191,11 @@ body.avec-panier #app { padding-bottom: calc(var(--hauteur-nav) + env(safe-area-
   display: flex; align-items: baseline; justify-content: space-between; gap: var(--s2);
   padding: 12px var(--s2); border-radius: var(--rayon-petit); background: var(--carte); box-shadow: inset 0 0 0 1px var(--ligne);
 }
-.ligne-vente-devise { flex: none; width: 104px; display: flex; }
-.ligne-vente-devise .segment { width: 100%; }
-.ligne-vente .montant-ligne { align-items: flex-end; }
+.taux-vente {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  padding: 10px var(--s2); border-radius: var(--rayon-petit); background: var(--carte); box-shadow: inset 0 0 0 1px var(--ligne);
+}
+.taux-vente .saisie { width: 112px; min-height: 44px; text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
 .total-vente:empty { display: none; }
 .a-payer {
   display: flex; align-items: baseline; justify-content: space-between; gap: var(--s2);

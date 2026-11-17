@@ -238,8 +238,10 @@ function resoudreClient(etat, c, quand) {
 // entree = {
 //   id?, devise?, taux?,
 //   lignes: [{ article_id, quantite, prix_unitaire, devise? }]   prix d'une pièce, dans la devise de la
-//           ligne (par défaut celle de la vente). Une vente « $ + FC » mélange des lignes en $ et en FC :
-//           on obtient alors un total en dollars ET un total en francs (`totaux`).
+//           ligne (par défaut celle de la vente),
+//        ou [{ article_id, quantite, montants: { USD, CDF } }]     vente « $ + FC » : ce que le client paie
+//           pour cette ligne, une partie en dollars et une partie en francs (convertie au taux de la vente).
+//   Une vente peut donc avoir un total en dollars ET un total en francs (`totaux`).
 //   paiement: { type: 'payee', encaissements?: [{ devise, montant, mode }] }
 //           | { type: 'credit', client: { id? | nom, telephone? }, acompte?: { devise, montant, mode } }
 // }
@@ -259,6 +261,23 @@ export function creerVente(etat, entree, opts) {
     const a = articlesActifs(etat).find((x) => x.id === lg.article_id);
     if (!a) echec("Un article du panier n'existe plus.");
     const quantite = entier(lg.quantite, 'La quantité', 1, 100000);
+    const cout = convertir(a.prix_achat * quantite, a.devise, p.devise_principale, taux);
+    if (lg.montants) {
+      // Paiement de la ligne en dollars + francs : la valeur totale (au taux de la vente) doit
+      // couvrir le prix d'achat, comparée dans la devise du prix d'achat.
+      const montants = {
+        USD: entier(lg.montants.USD ?? 0, `Le montant en dollars de « ${a.nom} »`, 0),
+        CDF: entier(lg.montants.CDF ?? 0, `Le montant en francs de « ${a.nom} »`, 0),
+      };
+      if (!montants.USD && !montants.CDF) echec(`Saisis ce que le client paie pour « ${a.nom} ».`);
+      const valeur = convertir(montants.USD, 'USD', a.devise, taux) + convertir(montants.CDF, 'CDF', a.devise, taux);
+      const achat = a.prix_achat * quantite;
+      if (valeur < achat) {
+        echec(`Vente invalide : « ${a.nom} » est vendu ${formater(valeur, a.devise)}, sous son prix d'achat (${formater(achat, a.devise)}).`);
+      }
+      besoin.set(a.id, (besoin.get(a.id) || 0) + quantite);
+      return { a, quantite, montants, devise: 'mixte', cout };
+    }
     if (lg.prix_unitaire == null || lg.prix_unitaire === '') echec(`Saisis le prix de vente de « ${a.nom} ».`);
     const prix = entier(lg.prix_unitaire, `Le prix de vente de « ${a.nom} »`, 1);
     const dl = verifDevise(lg.devise ?? devise);
@@ -268,7 +287,7 @@ export function creerVente(etat, entree, opts) {
     }
     besoin.set(a.id, (besoin.get(a.id) || 0) + quantite);
     // Coût d'achat de la ligne, dans la devise principale, au taux de la vente.
-    return { a, quantite, prix, devise: dl, cout: convertir(a.prix_achat * quantite, a.devise, p.devise_principale, taux) };
+    return { a, quantite, prix, devise: dl, montants: { USD: 0, CDF: 0, [dl]: quantite * prix }, cout };
   });
   for (const [aid, q] of besoin) {
     const a = etat.articles.find((x) => x.id === aid);
@@ -276,7 +295,7 @@ export function creerVente(etat, entree, opts) {
   }
   // Total par devise (« Total dollars » et « Total francs »), puis total dans la devise de la vente.
   const totaux = { USD: 0, CDF: 0 };
-  for (const x of lignes) totaux[x.devise] += x.quantite * x.prix;
+  for (const x of lignes) { totaux.USD += x.montants.USD; totaux.CDF += x.montants.CDF; }
   const devisesVendues = ['USD', 'CDF'].filter((d) => totaux[d] > 0);
   const total = devisesVendues.reduce((s, d) => s + convertir(totaux[d], d, devise, taux), 0);
   const total_principal = devisesVendues.reduce((s, d) => s + convertir(totaux[d], d, p.devise_principale, taux), 0);
@@ -289,7 +308,9 @@ export function creerVente(etat, entree, opts) {
   let acompte = null;
 
   if (pay.type === 'payee') {
-    const brut = pay.encaissements?.length ? pay.encaissements : [{ devise, montant: total, mode: 'cash' }];
+    // Par défaut : les dollars sont payés en dollars et les francs en francs.
+    const brut = pay.encaissements?.length ? pay.encaissements
+      : devisesVendues.map((d) => ({ devise: d, montant: totaux[d], mode: pay.mode || 'cash' }));
     encaissements = brut.map((e) => ({
       devise: verifDevise(e.devise),
       montant: entier(e.montant, 'Le montant reçu', 1),
@@ -335,12 +356,13 @@ export function creerVente(etat, entree, opts) {
   l.inserer('ventes', vente);
 
   const principaux = repartir(
-    lignes.map((x) => convertir(x.quantite * x.prix, x.devise, p.devise_principale, taux)),
+    lignes.map((x) => convertir(x.montants.USD, 'USD', p.devise_principale, taux) + convertir(x.montants.CDF, 'CDF', p.devise_principale, taux)),
     total_principal,
   );
   lignes.forEach((x, i) => l.inserer('lignes_de_vente', {
     id: uuid(), vente_id: id, article_id: x.a.id, nom: x.a.nom, categorie: x.a.categorie,
-    quantite: x.quantite, prix_unitaire: x.prix, devise: x.devise, cout_principal: x.cout, montant_principal: principaux[i],
+    quantite: x.quantite, prix_unitaire: x.prix ?? null, devise: x.devise, montants: x.montants,
+    cout_principal: x.cout, montant_principal: principaux[i],
   }));
 
   for (const [aid, q] of besoin) {

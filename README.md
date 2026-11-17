@@ -20,7 +20,8 @@ Pensée d'abord pour l'iPhone (Safari), compatible Android et ordinateur.
 
 - **Vendre** : grille d'articles avec leur **prix d'achat**, panier (bouton − sur la carte). À la validation,
   le vendeur **saisit le prix de vente de chaque produit** discuté avec le client : prix en **dollars**, en
-  **francs**, ou **$ + FC** (chaque produit dans sa devise, puis **Total dollars** et **Total francs**) ;
+  **francs**, ou **$ + FC** : pour chaque produit, ce que le client paie **en dollars et en francs**, la partie
+  en francs étant convertie au **taux de cette vente** (modifiable) ; puis **Total dollars** et **Total francs** ;
   un produit vendu **sous son prix d'achat apparaît en rouge (« Vente invalide »)** et bloque la vente.
   Le client paie les dollars en dollars et les francs en francs ; à crédit, une vente $ + FC crée une dette
   en dollars et une en francs. Le bénéfice s'affiche par produit et au total. Paiement **Cash,
@@ -89,7 +90,7 @@ complet demandent HTTPS : utilise plutôt le lien Netlify ci-dessous.
 
 ## Tests
 
-- **Moteur** (29 tests : montants, conversions, prix par produit, vente invalide, bénéfice, stock, dettes, acomptes, caisse, rapports) :
+- **Moteur** (31 tests : montants, conversions, prix par produit, vente invalide, bénéfice, stock, dettes, acomptes, caisse, rapports) :
   lancer le serveur local puis ouvrir http://localhost:8000/tests/ — le titre doit afficher « OK ».
 - Les parcours au toucher et les captures d'écran (375, 390, 430 px, clair et sombre) ont été vérifiés
   avec Playwright sur Edge.

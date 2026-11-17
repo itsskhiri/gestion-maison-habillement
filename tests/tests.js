@@ -177,6 +177,30 @@ test('Vente $ + FC à crédit : une dette en dollars et une en francs, acompte d
   egal(m.totalARecevoir(e), { USD: 0, CDF: 0 });
 });
 
+test('Un produit payé en partie en $ et en partie en FC (taux de la vente)', () => {
+  const { e, jean } = boutique('USD');
+  // Jean acheté 12 $, vendu 16 $ : 10 $ + 6 $ en francs (6 × 2 850 = 17 100 FC)
+  const v = m.creerVente(e, { devise: 'USD', lignes: [{ article_id: jean.id, quantite: 1, montants: { USD: 1000, CDF: 17100 } }] }).resultat;
+  egal(v.totaux, { USD: 1000, CDF: 17100 });
+  egal(solde(e).USD, 1000);
+  egal(solde(e).CDF, 17100);
+  egal(m.statsPeriode(e, ...TOUT).benefice, 400, 'bénéfice 4 $');
+  // 10 $ + 5 000 FC (≈ 1,75 $) = 11,75 $ < 12 $ : invalide
+  refuse(() => m.creerVente(e, { devise: 'USD', lignes: [{ article_id: jean.id, quantite: 1, montants: { USD: 1000, CDF: 5000 } }] }), 'Vente invalide');
+  // le taux de la vente compte : à 2 000 FC le dollar, 10 $ + 4 000 FC = 12 $ : valide
+  m.creerVente(e, { devise: 'USD', taux: 2000, lignes: [{ article_id: jean.id, quantite: 1, montants: { USD: 1000, CDF: 4000 } }] });
+  refuse(() => m.creerVente(e, { devise: 'USD', lignes: [{ article_id: jean.id, quantite: 1, montants: { USD: 0, CDF: 0 } }] }), 'Saisis');
+});
+
+test('Paiement $ + FC par produit, à crédit : une dette par devise', () => {
+  const { e, robe, jean } = boutique();
+  const v = m.creerVente(e, { lignes: [
+    { article_id: robe.id, quantite: 1, montants: { USD: 0, CDF: 40000 } },
+    { article_id: jean.id, quantite: 1, montants: { USD: 1000, CDF: 17100 } },
+  ], paiement: { type: 'credit', client: { nom: 'Bahati' } } }).resultat;
+  egal(m.ficheClient(e, v.client_id).reste, { USD: 1000, CDF: 57100 });
+});
+
 test('Paiement mixte dollars + francs', () => {
   const { e, robe } = boutique();
   // Prix convenu 100 000 FC : le client donne 20 $ (57 000 FC) + 43 000 FC
