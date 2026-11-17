@@ -4,7 +4,7 @@
 import * as api from './api.js';
 import { h, icone, enTete, fmMulti, fmVente, segment, etatVide } from './ui.js';
 import { modePaiement } from './reference.js';
-import { cleJour, heure, libelleJour, libelleCourt, libelleMois } from './temps.js';
+import { cleJour, heure, libelleJour, libelleCourt, libelleMois, dateNumerique, aujourdhui, joursEntre } from './temps.js';
 import { ouvrirRecu } from './vendre.js';
 import { imprimerListe, boutonImprimer } from './impression.js';
 
@@ -12,7 +12,7 @@ const etatEcran = { periode: 'jour', decalage: 0 };
 const PERIODES = [{ id: 'jour', libelle: 'Jour' }, { id: 'semaine', libelle: 'Semaine' }, { id: 'mois', libelle: 'Mois' }];
 
 function libellePeriode(periode, decalage, debut, fin) {
-  if (periode === 'jour') return decalage === 0 ? "Aujourd'hui" : decalage === -1 ? 'Hier' : libelleJour(debut);
+  if (periode === 'jour') return libelleJour(debut, { annee: true });
   if (periode === 'semaine') return decalage === 0 ? 'Cette semaine' : `Du ${libelleCourt(debut)} au ${libelleCourt(fin)}`;
   return decalage === 0 ? `${libelleMois(debut.slice(0, 7))} (ce mois)` : libelleMois(debut.slice(0, 7));
 }
@@ -35,8 +35,11 @@ export async function afficher(racine, { redessin = false } = {}) {
       h('button', { class: 'btn-rond', 'aria-label': 'Période précédente', onclick: () => changer(decalage - 1) }, icone('gauche', 22)),
       h('div', { style: 'flex:1;text-align:center' },
         h('h2', { class: 'sous-titre' }, libellePeriode(periode, decalage, b.debut, b.fin)),
-        periode !== 'jour' ? h('p', { class: 'legende' }, `${libelleCourt(b.debut)} – ${libelleCourt(b.fin)}`) : null),
+        h('p', { class: 'legende' }, periode === 'jour'
+          ? (decalage === 0 ? "Aujourd'hui" : decalage === -1 ? 'Hier' : dateNumerique(b.debut + 'T12:00:00Z'))
+          : `${libelleCourt(b.debut)} – ${libelleCourt(b.fin)}`)),
       h('button', { class: 'btn-rond', 'aria-label': 'Période suivante', disabled: decalage >= 0, onclick: () => changer(decalage + 1) }, icone('droite', 22))),
+    choixDate(periode === 'jour' ? b.debut : ''),
     h('section', { class: 'carte' },
       h('div', { class: 'rangee-espace' },
         h('div', {},
@@ -56,7 +59,7 @@ export async function afficher(racine, { redessin = false } = {}) {
     return;
   }
 
-  // Regroupées par jour pour la semaine et le mois
+  // Regroupées par date (un titre par jour, même pour un seul jour)
   const jours = new Map();
   for (const x of liste) {
     const c = cleJour(x.vente.cree_le);
@@ -65,10 +68,9 @@ export async function afficher(racine, { redessin = false } = {}) {
   }
   const zone = h('div', { style: 'margin-top:24px' });
   for (const [cle, factures] of jours) {
-    if (periode !== 'jour') {
-      zone.append(h('a', { class: 'groupe-titre', href: `#/rapports/${cle}` },
-        h('span', { class: 'surtitre' }, libelleJour(cle)), h('span', { class: 'legende' }, `${factures.length} ›`)));
-    }
+    zone.append(h('a', { class: 'groupe-titre', href: `#/rapports/${cle}` },
+      h('span', { class: 'surtitre' }, libelleJour(cle, { annee: true })),
+      h('span', { class: 'legende' }, `${factures.length} facture${factures.length > 1 ? 's' : ''} ›`)));
     zone.append(h('div', { class: 'liste' }, ...factures.map(ligneFacture)));
   }
   racine.append(zone);
@@ -83,16 +85,32 @@ async function rafraichir() {
   window.scrollTo(0, y);
 }
 
+// Aller directement aux factures d'une date précise (calendrier du téléphone).
+function choixDate(valeur) {
+  const jour = aujourdhui();
+  const champ = h('input', { type: 'date', class: 'saisie', max: jour, value: valeur, 'aria-label': 'Choisir une date' });
+  champ.addEventListener('change', () => {
+    if (!champ.value) return;
+    etatEcran.periode = 'jour';
+    etatEcran.decalage = Math.min(0, joursEntre(jour, champ.value));
+    rafraichir();
+  });
+  return h('label', { class: 'taux-vente', style: 'margin-bottom:16px' },
+    h('span', { class: 'champ-libelle' }, icone('calendrier', 18), ' Aller à une date'),
+    champ);
+}
+
 function ligneFacture({ vente: v, lignes, client }) {
   const articles = lignes.map((l) => (l.quantite > 1 ? `${l.quantite} × ` : '') + l.nom).join(', ');
   const statut = v.annule_le ? h('span', { class: 'badge badge-zero' }, 'Annulée')
     : v.statut === 'credit' ? h('span', { class: 'badge badge-accent' }, 'À crédit')
-      : h('span', { class: 'badge badge-ok' }, `Payée · ${modePaiement(v.mode)?.nom ?? ''}`);
+      : h('span', { class: 'badge badge-ok' }, 'Payée');
   return h('button', { class: 'liste-ligne', onclick: () => ouvrirRecu(v.id), 'aria-label': `Facture numéro ${v.numero}` },
     h('span', { class: 'icone-ronde accent' }, icone('facture', 20)),
     h('span', { class: 'liste-ligne-corps' },
       h('span', { class: `liste-ligne-titre${v.annule_le ? ' barre-annule' : ''}` }, `Facture n° ${v.numero}`),
-      h('span', { class: 'liste-ligne-sous' }, `${heure(v.cree_le)}${client ? ' · ' + client.nom : ''}`),
+      h('span', { class: 'liste-ligne-sous' }, `${dateNumerique(v.cree_le)} à ${heure(v.cree_le)}`),
+      h('span', { class: 'liste-ligne-sous' }, client ? `Client : ${client.nom}` : (v.statut === 'payee' && !v.annule_le ? modePaiement(v.mode)?.nom ?? '' : '')),
       h('span', { class: 'liste-ligne-sous' }, articles)),
     h('span', { class: 'liste-ligne-fin' },
       h('span', { class: `liste-ligne-montant${v.annule_le ? ' barre-annule' : ''}` }, fmVente(v)),

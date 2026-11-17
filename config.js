@@ -3,7 +3,7 @@
 // seront ajoutés ici à l'étape 2. Ne jamais mettre de clé secrète dans ce fichier.
 export const CONFIG = {
   nomApp: 'Cintre',
-  version: '0.5.1',
+  version: '0.5.2',
   fuseauParDefaut: 'Africa/Lubumbashi', // Bukavu, Goma, Lubumbashi (UTC+2)
   tauxParDefaut: 2850,                  // 1 $ = 2 850 FC, modifiable par le vendeur
   seuilStockBasParDefaut: 3,

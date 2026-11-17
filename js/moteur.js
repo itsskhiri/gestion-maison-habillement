@@ -752,12 +752,15 @@ export function dettesParClient(etat) {
     const c = parClient.get(d.client_id) || { du: { USD: 0, CDF: 0 }, paye: { USD: 0, CDF: 0 }, reste: { USD: 0, CDF: 0 }, plusAncienne: null, factures: [] };
     const paye = dejaPaye(etat, d.id, annules);
     // Factures encore dues (une vente « $ + FC » peut avoir deux dettes pour la même facture).
-    const numero = etat.ventes.find((v) => v.id === d.vente_id)?.numero;
-    if (d.montant - paye > 0 && numero && !c.factures.includes(numero)) c.factures.push(numero);
+    const vente = etat.ventes.find((v) => v.id === d.vente_id);
+    if (d.montant - paye > 0 && vente?.numero && !c.factures.some((f) => f.numero === vente.numero)) {
+      c.factures.push({ numero: vente.numero, date: vente.cree_le });
+    }
     c.du[d.devise] += d.montant;
     c.paye[d.devise] += paye;
     c.reste[d.devise] += d.montant - paye;
     if (d.montant - paye > 0 && (!c.plusAncienne || d.cree_le < c.plusAncienne)) c.plusAncienne = d.cree_le;
+    c.factures.sort((a, b) => a.numero - b.numero);
     parClient.set(d.client_id, c);
   }
   const versP = (x) => convertir(x.USD, 'USD', p.devise_principale, p.taux) + convertir(x.CDF, 'CDF', p.devise_principale, p.taux);

@@ -211,7 +211,7 @@ test('Factures : numérotées 1, 2, 3…, liées aux dettes, listées par pério
   egal(vendre(e, robe, 1, 45000, {}, J('2026-11-16', 15)).numero, 4, 'un numéro annulé n’est jamais réutilisé');
   // Dette de Ciza liée à la facture n° 2
   const ciza = m.dettesParClient(e).find((c) => c.client.nom === 'Ciza');
-  egal(ciza.factures, [2]);
+  egal(ciza.factures, [{ numero: 2, date: v2.cree_le }]);
   egal(m.ficheClient(e, ciza.client.id).historique[0].numero, 2);
   // Semaine du 9 au 15 novembre : factures 1 et 2
   const sem = m.factures(e, '2026-11-09', '2026-11-15');
