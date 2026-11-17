@@ -6,6 +6,7 @@ import { h, icone, enTete, fmMulti, fmVente, segment, etatVide } from './ui.js';
 import { modePaiement } from './reference.js';
 import { cleJour, heure, libelleJour, libelleCourt, libelleMois } from './temps.js';
 import { ouvrirRecu } from './vendre.js';
+import { imprimerListe, boutonImprimer } from './impression.js';
 
 const etatEcran = { periode: 'jour', decalage: 0 };
 const PERIODES = [{ id: 'jour', libelle: 'Jour' }, { id: 'semaine', libelle: 'Semaine' }, { id: 'mois', libelle: 'Mois' }];
@@ -44,7 +45,10 @@ export async function afficher(racine, { redessin = false } = {}) {
         h('div', { style: 'text-align:right' },
           h('p', { class: 'legende' }, `Payées : ${resume.payees}`),
           h('p', { class: 'legende' }, `À crédit : ${resume.credit}`),
-          resume.annulees ? h('p', { class: 'legende' }, `Annulées : ${resume.annulees}`) : null))),
+          resume.annulees ? h('p', { class: 'legende' }, `Annulées : ${resume.annulees}`) : null)),
+      liste.length ? h('div', { style: 'margin-top:12px' }, boutonImprimer(() => imprimerListe({
+        p, titre: libellePeriode(periode, decalage, b.debut, b.fin).toLowerCase(), debut: b.debut, fin: b.fin, liste, resume,
+      }), 'Imprimer la liste / PDF')) : null),
   );
 
   if (!liste.length) {

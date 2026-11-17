@@ -12,6 +12,7 @@ import { convertir, formater, lireEntier } from './money.js';
 import { CATEGORIES, modePaiement } from './reference.js';
 import { aujourdhui, heure, cleJour, libelleJour, dateNumerique } from './temps.js';
 import { ouvrirFormulaireArticle } from './articles.js';
+import { imprimerFacture, boutonImprimer } from './impression.js';
 
 // État de l'écran conservé entre deux affichages (le panier ne se vide pas en changeant d'onglet).
 const etatEcran = {
@@ -646,6 +647,7 @@ export async function ouvrirRecu(id, { nouvelle = false } = {}) {
       !v.annule_le ? h('p', { class: `champ-aide ${benefice < 0 ? 'negatif' : 'positif'}`, style: 'text-align:center' },
         `Pour toi seulement : bénéfice ${formater(benefice, p.devise_principale, { signe: true })}`) : null,
       h('button', { class: 'btn btn-principal btn-bloc', onclick: () => partager(texteRecu(d, p)) }, icone('partager', 20), 'Partager la facture'),
+      boutonImprimer(() => imprimerFacture(d, p)),
       nouvelle ? h('button', { class: 'btn btn-secondaire btn-bloc', onclick: () => f.fermer() }, 'Nouvelle vente') : null,
       annulerBtn),
   });

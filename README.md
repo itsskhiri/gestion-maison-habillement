@@ -30,6 +30,9 @@ Pensée d'abord pour l'iPhone (Safari), compatible Android et ordinateur.
 - **Factures** : chaque vente est une **facture numérotée** (n° 1, 2, 3…, jamais réutilisé). Onglet Factures
   par **jour, semaine ou mois** (flèches pour les périodes passées), avec total, payées et à crédit. Chaque
   dette indique sa facture (« Ciza · Facture n° 23 »).
+- **Imprimer / PDF** : sur chaque facture, et dans l'onglet Factures pour la liste du jour, de la semaine ou du
+  mois. Ouvre la fenêtre d'impression (sur iPhone : partager ou enregistrer en PDF ; sur ordinateur :
+  « Enregistrer au format PDF »). Le prix d'achat et le bénéfice n'apparaissent jamais sur ces documents.
 - **Articles** : nom + prix d'achat + quantité (catégorie facultative), « Ajouter un autre », nouvel
   arrivage, modification, suppression. Stock jamais négatif.
 - **Dettes** : total à recevoir, fiche client (total dû / déjà payé / reste), paiement partiel,

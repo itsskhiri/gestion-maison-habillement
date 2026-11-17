@@ -605,3 +605,31 @@ button.carte-stat { border: 0; text-align: left; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 1ms !important; transition-duration: 1ms !important; }
 }
+
+/* ---------- Impression et PDF (factures) ---------- */
+
+#zone-impression { display: none; }
+@media print {
+  @page { size: A4; margin: 14mm; }
+  html, body { background: #fff !important; overflow: visible !important; height: auto !important; }
+  body > *:not(#zone-impression) { display: none !important; }
+  #zone-impression { display: block; color: #16131a; font: 11pt/1.45 var(--police); }
+  .imp-page { max-width: 180mm; margin: 0 auto; }
+  .imp-entete { display: flex; justify-content: space-between; align-items: flex-end; gap: 12mm; padding-bottom: 4mm; border-bottom: 2px solid #6E1D3A; margin-bottom: 6mm; }
+  .imp-boutique { font-size: 18pt; font-weight: 700; color: #6E1D3A; letter-spacing: -0.01em; }
+  .imp-titre-bloc { text-align: right; }
+  .imp-titre { font-size: 15pt; font-weight: 700; }
+  .imp-petit { font-size: 9pt; color: #6b6268; }
+  .imp-infos { display: flex; justify-content: space-between; gap: 8mm; margin-bottom: 6mm; }
+  .imp-table { width: 100%; border-collapse: collapse; margin-bottom: 5mm; }
+  .imp-table th { text-align: left; font-size: 8.5pt; text-transform: uppercase; letter-spacing: 0.05em; color: #6b6268; border-bottom: 1px solid #c9bfc4; padding: 2mm 1.5mm; }
+  .imp-table td { padding: 2.2mm 1.5mm; border-bottom: 1px solid #e6dfe2; vertical-align: top; }
+  .imp-table tr { break-inside: avoid; }
+  .imp-total td { font-weight: 700; font-size: 12.5pt; border-top: 2px solid #16131a; border-bottom: 0; }
+  .imp-pied td { border-bottom: 0; padding: 1mm 1.5mm; }
+  .imp-droite, .imp-table .imp-droite { text-align: right; white-space: nowrap; }
+  .imp-fort { font-weight: 700; }
+  .imp-barre td { text-decoration: line-through; color: #8a8086; }
+  .imp-annule { border: 1.5px solid #b0281f; color: #b0281f; font-weight: 700; padding: 2mm 3mm; margin-bottom: 5mm; text-align: center; }
+  .imp-merci { margin-top: 8mm; text-align: center; font-style: italic; color: #6b6268; }
+}

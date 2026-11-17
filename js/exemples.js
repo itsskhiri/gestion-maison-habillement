@@ -71,6 +71,8 @@ export function genererExemples(etat) {
     const jour = ajouterJours(debut, i);
     const taux = i < 15 ? 2800 : p.taux;
     const nbVentes = entre(2, 6);
+    // Heures de la journée triées : les numéros de facture suivent l'ordre des ventes.
+    const heures = Array.from({ length: nbVentes }, () => entre(9 * 60, 18 * 60 + 59)).sort((x, y) => x - y);
     for (let k = 0; k < nbVentes; k++) {
       const dispo = articles.filter((a) => a.quantite > 0);
       if (!dispo.length) break;
@@ -80,7 +82,7 @@ export function genererExemples(etat) {
         const a = choisir(dispo);
         if (!lignes.some((l) => l.article_id === a.id)) lignes.push({ article_id: a.id, quantite: 1 });
       }
-      const quand = { date: isoPourJour(jour, entre(9, 18), entre(0, 59)) };
+      const quand = { date: isoPourJour(jour, Math.floor(heures[k] / 60), heures[k] % 60) };
       if (!passe(quand)) continue;
       const mode = hasard() < 0.7 ? 'cash' : choisir(['mpesa', 'mpesa', 'airtel', 'orange']);
       // Prix de vente discuté pour chaque produit : 1,25 à 1,7 fois le prix d'achat,
