@@ -8,7 +8,7 @@ export const CATEGORIES = [
   { id: 'tshirts',     nom: 'T-shirts',           couleur: '#C7853A' },
   { id: 'vestes',      nom: 'Vestes et manteaux', couleur: '#7A5F4C' },
   { id: 'ensembles',   nom: 'Ensembles',          couleur: '#8E7B3A' },
-  { id: 'chaussures',  nom: 'Chaussures',         couleur: '#45464F' },
+  { id: 'chaussures',  nom: 'Chaussures',         couleur: '#5E6A80' },
   { id: 'enfants',     nom: 'Enfants',            couleur: '#5C9E68' },
   { id: 'accessoires', nom: 'Accessoires',        couleur: '#B8704F' },
   { id: 'autre',       nom: 'Autre',              couleur: '#8A8790' },

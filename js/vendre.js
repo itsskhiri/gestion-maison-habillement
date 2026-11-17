@@ -5,7 +5,7 @@
 
 import * as api from './api.js';
 import {
-  h, icone, logo, pastille, boutonProfil, enTete, fm, fmMulti, fmVente, num, puces, segment, saisie, champ, champMontant,
+  h, icone, logo, pastille, boutonProfil, boutonTheme, enTete, fm, fmMulti, fmVente, num, puces, segment, saisie, champ, champMontant,
   ouvrirFeuille, confirmer, toast, erreur, vibrer, partager, enCours, etatVide, optionsModes, vider,
 } from './ui.js';
 import { convertir, formater, lireEntier } from './money.js';
@@ -40,6 +40,7 @@ export async function afficher(racine) {
       h('div', { class: 'entete-nom' }, p.nom_boutique),
       h('div', { class: 'entete-actions' },
         h('a', { class: 'btn-icone', href: '#/ventes', 'aria-label': 'Historique des ventes' }, icone('historique', 24)),
+        boutonTheme(),
         boutonProfil())),
     h('section', { class: 'resume-jour' },
       h('p', { class: 'legende' }, 'Ventes du jour'),

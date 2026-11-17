@@ -95,7 +95,26 @@ export function enTete({ titre, sousTitre, retour, actions = [] }) {
     h('div', { class: 'entete-titres' },
       h('h1', { class: 'titre' }, titre),
       sousTitre ? h('p', { class: 'legende' }, sousTitre) : null),
-    h('div', { class: 'entete-actions' }, ...actions, boutonProfil()));
+    h('div', { class: 'entete-actions' }, ...actions, boutonTheme(), boutonProfil()));
+}
+
+// Bouton soleil / lune : passe du mode sombre au mode clair (et inversement) d'un toucher.
+export function boutonTheme() {
+  const sombre = () => document.documentElement.dataset.mode === 'sombre';
+  const libelle = () => (sombre() ? 'Passer en mode clair' : 'Passer en mode sombre');
+  const b = h('button', { class: 'btn-icone', type: 'button', 'aria-label': libelle(), title: libelle() });
+  const dessiner = () => {
+    b.replaceChildren(icone(sombre() ? 'soleil' : 'lune', 24));
+    b.setAttribute('aria-label', libelle());
+    b.title = libelle();
+  };
+  b.addEventListener('click', () => {
+    window.cintreApparence?.choisir(sombre() ? 'clair' : 'sombre');
+    dessiner();
+    vibrer(8);
+  });
+  dessiner();
+  return b;
 }
 
 export function boutonProfil() {
