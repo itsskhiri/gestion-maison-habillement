@@ -473,8 +473,10 @@ export function encaisserPaiement(etat, entree, opts) {
   const recu = entier(entree.montant_recu, 'Le montant', 1);
 
   const annules = paiementsAnnules(etat);
+  const quand = date(opts);
   const dettes = etat.dettes
-    .filter((d) => d.client_id === client.id && d.devise === deviseDette && !d.annule_le)
+    // Seulement les dettes qui existaient déjà au moment du paiement.
+    .filter((d) => d.client_id === client.id && d.devise === deviseDette && !d.annule_le && d.cree_le <= quand)
     .map((d) => ({ d, reste: resteDette(etat, d, annules) }))
     .filter((x) => x.reste > 0)
     .sort((a, b) => a.d.cree_le.localeCompare(b.d.cree_le)); // la plus ancienne d'abord
@@ -486,7 +488,6 @@ export function encaisserPaiement(etat, entree, opts) {
   const contre = Math.min(convertir(recu, deviseRecue, deviseDette, taux), reste);
   if (contre <= 0) echec('Le montant est trop petit.');
 
-  const quand = date(opts);
   const l = lot(etat);
   const paiement = {
     id, client_id: client.id, devise: deviseDette, montant: contre,
@@ -903,10 +904,24 @@ export function rapportDuJour(etat, cle) {
   const taux = new Set([
     ...ventes.map((x) => x.vente.taux), ...paiements.map((x) => x.paiement.taux), ...depenses.map((d) => d.taux),
   ]);
+  // Répartition exacte (devise principale) :
+  //   ventes   = payées tout de suite + acomptes + laissé en dette
+  //   encaissé = payées tout de suite + acomptes + remboursements de dettes
+  const venteActive = new Set(ventes.filter((x) => actif(x.vente)).map((x) => x.vente.id));
+  const repartition = { comptant: 0, acomptes: 0, enDette: 0, remboursements: 0 };
+  for (const m of etat.mouvements_caisse) {
+    if (!actif(m) || !duJour(m)) continue;
+    if (m.source === 'vente') repartition.comptant += m.montant_principal;
+    else if (m.source === 'acompte' && venteActive.has(m.reference_id)) repartition.acomptes += m.montant_principal;
+    else if (m.source === 'paiement_dette') repartition.remboursements += m.montant_principal;
+  }
+  const ventesCredit = ventes.filter((x) => actif(x.vente) && x.vente.statut === 'credit').reduce((s, x) => s + x.vente.total_principal, 0);
+  repartition.enDette = ventesCredit - repartition.acomptes;
   return {
     cle,
     stats: statsPeriode(etat, cle, cle),
-    nouvellesDettesTotal: nouvellesDettes.reduce((s, x) => s + convertir(x.dette.montant, x.dette.devise, p.devise_principale, x.dette.taux), 0),
+    repartition,
+    nouvellesDettesTotal: repartition.enDette,
     soldeDebut: soldeCaisse(etat, { avant: cle }),
     soldeFin: soldeCaisse(etat, { jusquA: cle }),
     ventes, paiements, nouvellesDettes, depenses,

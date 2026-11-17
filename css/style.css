@@ -596,6 +596,10 @@ button.carte-stat { border: 0; text-align: left; }
 .ligne-jour.inactif .liste-ligne-titre { color: var(--texte-3); font-weight: 500; }
 .navigation-jour { display: flex; align-items: center; justify-content: space-between; gap: var(--s1); margin-bottom: var(--s2); }
 .navigation-jour .sous-titre { text-align: center; flex: 1; }
+.detail-calcul { margin-top: 12px; }
+.detail-total { display: flex; justify-content: space-between; gap: var(--s2); font-weight: 700; padding-bottom: 4px; border-bottom: 1px solid var(--ligne); margin-bottom: 4px; }
+.detail-ligne { display: flex; justify-content: space-between; gap: var(--s2); padding: 3px 0 3px 12px; color: var(--texte-2); font-size: 16px; }
+.detail-ligne > span:first-child::before { content: "• "; color: var(--texte-3); }
 .reglage-ligne { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); }
 
 /* ---------- Animations ---------- */

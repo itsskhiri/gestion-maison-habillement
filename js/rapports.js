@@ -148,6 +148,22 @@ export async function afficherJour(racine, cle) {
     return;
   }
 
+  // D'où viennent les chiffres : les ventes et l'encaissé, décomposés (les totaux tombent juste).
+  const rp = r.repartition;
+  const ligneDetail = (libelle, valeur, classe = '') => h('div', { class: 'detail-ligne' },
+    h('span', {}, libelle), h('span', { class: `num ${classe}` }, fm(valeur, dev)));
+  racine.append(h('section', { class: 'carte detail-calcul' },
+    h('div', { class: 'detail-total' }, h('span', {}, 'Ventes du jour'), h('strong', { class: 'num' }, fm(r.stats.ventes, dev))),
+    ligneDetail('payées tout de suite', rp.comptant),
+    ligneDetail('acomptes reçus', rp.acomptes),
+    ligneDetail('laissées en dette', rp.enDette, rp.enDette ? 'negatif' : ''),
+    h('div', { class: 'detail-total', style: 'margin-top:12px' }, h('span', {}, 'Encaissé'), h('strong', { class: 'num' }, fm(r.stats.encaisse, dev))),
+    ligneDetail('ventes payées tout de suite', rp.comptant),
+    ligneDetail('acomptes reçus', rp.acomptes),
+    ligneDetail('remboursements de dettes', rp.remboursements, rp.remboursements ? 'positif' : ''),
+    h('p', { class: 'champ-aide', style: 'margin-top:8px' },
+      'L’encaissé compte aussi l’argent reçu aujourd’hui pour des dettes plus anciennes ; les ventes laissées en dette seront encaissées plus tard.')));
+
   racine.append(h('button', { class: 'btn btn-secondaire btn-bloc', style: 'margin-top:16px', onclick: () => partager(texteRapport(p, r)) }, icone('partager', 20), 'Partager le rapport'));
 
   if (r.ventes.length) {

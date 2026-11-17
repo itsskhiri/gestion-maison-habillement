@@ -70,6 +70,21 @@ export function genererExemples(etat) {
   for (let i = 0; i < 30; i++) {
     const jour = ajouterJours(debut, i);
     const taux = i < 15 ? 2800 : p.taux;
+    // Le matin (8 h), avant les ventes du jour, quelques clients paient une partie de leur dette.
+    for (const d of dettesOuvertes) {
+      if (i - d.jour < 3 || hasard() > 0.1) continue;
+      const fiche = m.ficheClient(etat, d.client_id);
+      const reste = fiche.reste[p.devise_principale];
+      if (reste <= 0) continue;
+      const montant = hasard() < 0.3 ? reste : Math.max(1, Math.floor(reste / 3));
+      const quandPaiement = { date: isoPourJour(jour, 8, entre(0, 59)) };
+      if (!passe(quandPaiement)) continue;
+      faire(m.encaisserPaiement(etat, {
+        client_id: d.client_id, devise_dette: p.devise_principale, montant_recu: montant,
+        mode: hasard() < 0.6 ? 'cash' : 'mpesa', taux,
+      }, quandPaiement));
+    }
+
     const nbVentes = entre(2, 6);
     // Heures de la journée triées : les numéros de facture suivent l'ordre des ventes.
     const heures = Array.from({ length: nbVentes }, () => entre(9 * 60, 18 * 60 + 59)).sort((x, y) => x - y);
@@ -114,21 +129,6 @@ export function genererExemples(etat) {
           paiement: { type: 'payee', encaissements: [{ devise, montant: totalDe(lg), mode }] },
         }, quand));
       }
-    }
-
-    // Quelques clients reviennent payer une partie de leur dette.
-    for (const d of dettesOuvertes) {
-      if (i - d.jour < 3 || hasard() > 0.1) continue;
-      const fiche = m.ficheClient(etat, d.client_id);
-      const reste = fiche.reste[p.devise_principale];
-      if (reste <= 0) continue;
-      const montant = hasard() < 0.3 ? reste : Math.max(1, Math.floor(reste / 3));
-      const quandPaiement = { date: isoPourJour(jour, entre(10, 17), entre(0, 59)) };
-      if (!passe(quandPaiement)) continue;
-      faire(m.encaisserPaiement(etat, {
-        client_id: d.client_id, devise_dette: p.devise_principale, montant_recu: montant,
-        mode: hasard() < 0.6 ? 'cash' : 'mpesa', taux,
-      }, quandPaiement));
     }
 
     // Dépenses

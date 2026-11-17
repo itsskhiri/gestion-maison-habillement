@@ -450,6 +450,35 @@ test('Rapports : totaux de chaque jour égaux au journal de caisse', () => {
   }
 });
 
+test('Un paiement ne règle jamais une dette créée après lui (même jour)', () => {
+  const { e, robe } = boutique();
+  const v1 = vendre(e, robe, 1, 40000, { paiement: { type: 'credit', client: { nom: 'Aline' } } }, J('2026-11-10', 10));
+  vendre(e, robe, 1, 50000, { paiement: { type: 'credit', client: { nom: 'Aline' } } }, J('2026-11-15', 16));
+  // À 11 h le 15, seule la dette du 10 (40 000) existe : payer 45 000 est refusé
+  refuse(() => m.encaisserPaiement(e, { client_id: v1.client_id, devise_dette: 'CDF', montant_recu: 45000 }, J('2026-11-15', 11)), 'dépasse');
+  const r = m.encaisserPaiement(e, { client_id: v1.client_id, devise_dette: 'CDF', montant_recu: 40000 }, J('2026-11-15', 11)).resultat;
+  egal(r.reste_apres, 0, 'reste après le paiement de 11 h');
+  const rap = m.rapportDuJour(e, '2026-11-15');
+  egal(rap.paiements[0].reste_apres, 0, 'jamais négatif dans le rapport');
+});
+
+test('Rapport du jour : ventes = payé + acomptes + dettes ; encaissé = payé + acomptes + remboursements', () => {
+  const { e, robe, jean } = boutique('USD');
+  const c = vendre(e, jean, 1, 2000, { devise: 'USD', paiement: { type: 'credit', client: { nom: 'Neema' } } }, J('2026-11-01'));
+  vendre(e, robe, 1, 1500, { devise: 'USD' }, J('2026-11-05', 9));                                                    // payée
+  vendre(e, jean, 1, 2500, { devise: 'USD', paiement: { type: 'credit', client: { nom: 'Ciza' },
+    acompte: { devise: 'CDF', montant: 10001, mode: 'cash' } } }, J('2026-11-05', 10));                               // acompte en FC (arrondi)
+  m.creerVente(e, { devise: 'USD', lignes: [{ article_id: robe.id, quantite: 1, montants: { USD: 700, CDF: 14251 } }],
+    paiement: { type: 'credit', client: { nom: 'Bahati' }, acompte: { devise: 'CDF', montant: 5000 } } }, J('2026-11-05', 11)); // $ + FC
+  m.encaisserPaiement(e, { client_id: c.client_id, devise_dette: 'USD', montant_recu: 2850, devise_recue: 'CDF' }, J('2026-11-05', 12)); // ancienne dette
+  const r = m.rapportDuJour(e, '2026-11-05');
+  const rp = r.repartition;
+  egal(rp.comptant + rp.acomptes + rp.enDette, r.stats.ventes, 'ventes');
+  egal(rp.comptant + rp.acomptes + rp.remboursements, r.stats.encaisse, 'encaissé');
+  egal(rp.remboursements, 100, 'remboursement 2 850 FC = 1 $');
+  if (rp.enDette <= 0) throw new Error('dettes du jour attendues');
+});
+
 test('Saisies invalides refusées', () => {
   const { e, robe } = boutique();
   refuse(() => m.ajouterArticle(e, { nom: '  ', prix_achat: 100, devise: 'CDF', quantite: 1 }), 'obligatoire');
@@ -471,6 +500,14 @@ test('Exemples de démonstration cohérents (stock, caisse, dettes, bénéfice)'
     egal(e.lignes_de_vente.reduce((t, l) => t + l.montant_principal, 0), e.ventes.reduce((t, v) => t + v.total_principal, 0), `lignes = ventes (${devise})`);
     if (s.marge <= 0) throw new Error('marge des exemples non positive');
     for (const c of m.dettesParClient(e)) if (c.reste.USD < 0 || c.reste.CDF < 0) throw new Error('reste négatif');
+    // Chaque jour : reste après paiement jamais négatif, ventes et encaissé décomposés exactement
+    for (const cle of new Set(e.ventes.map((v) => cleJour(v.cree_le)))) {
+      const r = m.rapportDuJour(e, cle);
+      if (r.paiements.some((x) => x.reste_apres < 0)) throw new Error(`reste négatif dans le rapport du ${cle}`);
+      const rp = r.repartition;
+      egal(rp.comptant + rp.acomptes + rp.enDette, r.stats.ventes, `ventes du ${cle}`);
+      egal(rp.comptant + rp.acomptes + rp.remboursements, r.stats.encaisse, `encaissé du ${cle}`);
+    }
   }
 });
 

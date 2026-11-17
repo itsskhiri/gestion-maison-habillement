@@ -96,7 +96,7 @@ complet demandent HTTPS : utilise plutôt le lien Netlify ci-dessous.
 
 ## Tests
 
-- **Moteur** (33 tests : montants, conversions, prix par produit, vente invalide, bénéfice, stock, dettes, acomptes, caisse, rapports) :
+- **Moteur** (35 tests : montants, conversions, prix par produit, vente invalide, bénéfice, stock, dettes, acomptes, caisse, rapports) :
   lancer le serveur local puis ouvrir http://localhost:8000/tests/ — le titre doit afficher « OK ».
 - Les parcours au toucher et les captures d'écran (375, 390, 430 px, clair et sombre) ont été vérifiés
   avec Playwright sur Edge.
