@@ -271,13 +271,20 @@ function verifierPrix(ctx, champsPrix) {
 }
 
 // Bloc des totaux : un total par devise vendue, puis le bénéfice.
-function blocTotaux(totaux, beneficeP, devisePrincipale, { mixte }) {
+function blocTotaux(totaux, beneficeP, devisePrincipale, { mixte, taux }) {
   const lignes = [];
   for (const d of ['USD', 'CDF']) {
     if (!mixte && !totaux[d]) continue;
     lignes.push(h('div', { class: 'total-devise' },
       h('span', { class: 'texte-2' }, mixte ? (d === 'USD' ? 'Total dollars' : 'Total francs') : 'Total'),
       h('span', { class: mixte ? 'chiffre-m' : 'chiffre-l' }, fm(totaux[d], d))));
+  }
+  // Vente $ + FC : valeur de toute la vente, convertie au taux de la vente.
+  if (mixte) {
+    const enDollars = totaux.USD + convertir(totaux.CDF, 'CDF', 'USD', taux);
+    const enFrancs = totaux.CDF + convertir(totaux.USD, 'USD', 'CDF', taux);
+    lignes.push(h('p', { class: 'champ-aide', style: 'text-align:right;font-size:15px' },
+      'Soit en tout : ', h('strong', { class: 'num' }, `${formater(enDollars, 'USD')} = ${formater(enFrancs, 'CDF')}`)));
   }
   return h('div', { class: 'pile-serree' }, ...lignes,
     beneficeP != null ? h('p', { class: `champ-aide ${beneficeP >= 0 ? 'positif' : 'negatif'}`, style: 'text-align:right' },
@@ -392,7 +399,7 @@ function feuillePaiement(ctx) {
     }
     if (totaux) {
       const venteP = convertir(totaux.USD, 'USD', p.devise_principale, tauxVente(ctx)) + convertir(totaux.CDF, 'CDF', p.devise_principale, tauxVente(ctx));
-      zoneTotal.append(blocTotaux(totaux, invalides ? null : venteP - coutPanier(ctx), p.devise_principale, { mixte: modePrix(ctx) === 'mixte' }));
+      zoneTotal.append(blocTotaux(totaux, invalides ? null : venteP - coutPanier(ctx), p.devise_principale, { mixte: modePrix(ctx) === 'mixte', taux: tauxVente(ctx) }));
     }
   }
 
@@ -436,10 +443,10 @@ function feuillePaiement(ctx) {
         h('span', { class: 'champ-libelle' }, 'Taux de cette vente'),
         h('span', { class: 'rangee' }, h('span', { class: 'texte-2' }, '1 $ ='), champTaux, h('span', { class: 'texte-2' }, 'FC'))),
       zoneLignes,
-      zoneTotal,
       h('div', { class: 'champ' },
         h('span', { class: 'champ-libelle' }, 'Mode de paiement'),
         puces(optionsModes(), mode, (m) => { mode = m || 'cash'; }, { libelle: 'Mode de paiement' })),
+      zoneTotal, // totaux tout en bas, juste au-dessus de « Payé »
       payer,
       credit),
   });
@@ -565,7 +572,7 @@ async function feuilleCredit(ctx) {
   const f = ouvrirFeuille({
     titre: 'Vente à crédit',
     contenu: h('div', { class: 'pile' },
-      blocTotaux(totaux, null, p.devise_principale, { mixte }),
+      blocTotaux(totaux, null, p.devise_principale, { mixte, taux: t }),
       champ('Client', nom),
       zoneTel,
       listeClients,
