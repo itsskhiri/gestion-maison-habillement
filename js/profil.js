@@ -85,6 +85,11 @@ export async function afficher(racine) {
         h('p', { class: 'sous-titre' }, p.nom_boutique),
         h('p', { class: 'texte-2' }, `1 $ = ${formater(p.taux, 'CDF')} · ${articles.length} article${articles.length > 1 ? 's' : ''}`))),
     form,
+    h('div', { class: 'section-titre' }, h('h2', { class: 'sous-titre' }, 'Apparence')),
+    h('div', { class: 'carte pile-serree' },
+      segment([{ id: 'clair', libelle: 'Clair' }, { id: 'sombre', libelle: 'Sombre' }, { id: 'auto', libelle: 'Automatique' }],
+        window.cintreApparence?.lire() ?? 'clair', (choix) => window.cintreApparence?.choisir(choix), { libelle: 'Apparence' }),
+      h('p', { class: 'champ-aide' }, 'Automatique suit le réglage du téléphone. Ce choix est gardé sur cet appareil.')),
     h('div', { class: 'section-titre' }, h('h2', { class: 'sous-titre' }, 'Exporter mes données')),
     h('div', { class: 'liste' }, ...EXPORTS.map(([table, libelle]) => h('button', {
       class: 'liste-ligne',

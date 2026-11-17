@@ -1,19 +1,23 @@
 /* Cintre — feuille de style unique.
-   Grille d'espacement de 8 px, police système, une couleur d'accent (bordeaux),
-   vert et rouge réservés aux montants. Mode sombre automatique. */
+   Grille d'espacement de 8 px, police système, une couleur d'accent (bordeaux) avec une touche
+   dorée, vert et rouge réservés aux montants.
+   Thème : clair « ivoire et bordeaux » par défaut ; sombre au choix (Profil → Apparence).
+   Le script js/theme.js pose data-mode="clair" ou "sombre" sur <html> avant l'affichage. */
 
 :root {
-  --fond: #F3F1EE;
-  --carte: #FFFFFF;
-  --carte-2: #F8F7F5;
-  --texte: #18161A;
-  --texte-2: #67636B;
-  --texte-3: #75717A;
-  --ligne: rgba(24, 22, 26, 0.09);
-  --ligne-forte: rgba(24, 22, 26, 0.16);
-  --accent: #6B1E3A;
-  --accent-fort: #561730;
-  --accent-doux: rgba(107, 30, 58, 0.08);
+  --fond: #F6F1EA;          /* ivoire chaud */
+  --carte: #FFFDF9;
+  --carte-2: #FAF6F0;
+  --texte: #1E1A1C;
+  --texte-2: #685F64;
+  --texte-3: #776E73;
+  --ligne: rgba(70, 45, 35, 0.09);
+  --ligne-forte: rgba(70, 45, 35, 0.17);
+  --accent: #6E1D3A;        /* bordeaux */
+  --accent-fort: #571630;
+  --accent-doux: rgba(110, 29, 58, 0.08);
+  --or: #A9844A;            /* touche dorée, très discrète */
+  --or-doux: rgba(169, 132, 74, 0.16);
   --sur-accent: #FFFFFF;
   --positif: #1C7449;
   --positif-doux: rgba(28, 116, 73, 0.1);
@@ -21,8 +25,8 @@
   --negatif-doux: rgba(176, 40, 31, 0.09);
   --attention: #A35F00;
   --attention-doux: rgba(163, 95, 0, 0.1);
-  --ombre: 0 1px 2px rgba(24, 22, 26, 0.04), 0 4px 16px rgba(24, 22, 26, 0.04);
-  --ombre-haute: 0 -8px 32px rgba(24, 22, 26, 0.12);
+  --ombre: 0 1px 2px rgba(70, 45, 35, 0.05), 0 6px 20px rgba(70, 45, 35, 0.05);
+  --ombre-haute: 0 -8px 32px rgba(70, 45, 35, 0.14);
   --rayon: 16px;
   --rayon-petit: 12px;
   --s1: 8px; --s2: 16px; --s3: 24px; --s4: 32px; --s5: 40px;
@@ -32,30 +36,30 @@
   color-scheme: light;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --fond: #0D0C0E;
-    --carte: #19181B;
-    --carte-2: #222125;
-    --texte: #F4F2F5;
-    --texte-2: #ABA7B0;
-    --texte-3: #8E8A93;
-    --ligne: rgba(255, 255, 255, 0.09);
-    --ligne-forte: rgba(255, 255, 255, 0.16);
-    --accent: #E08EAA;
-    --accent-fort: #EBA6BD;
-    --accent-doux: rgba(224, 142, 170, 0.13);
-    --sur-accent: #2A0C17;
-    --positif: #4CC48A;
-    --positif-doux: rgba(76, 196, 138, 0.13);
-    --negatif: #FF7A70;
-    --negatif-doux: rgba(255, 122, 112, 0.13);
-    --attention: #F2A649;
-    --attention-doux: rgba(242, 166, 73, 0.14);
-    --ombre: 0 0 0 1px rgba(255, 255, 255, 0.04);
-    --ombre-haute: 0 -8px 32px rgba(0, 0, 0, 0.5);
-    color-scheme: dark;
-  }
+:root[data-mode="sombre"] {
+  --fond: #0D0C0E;
+  --carte: #19181B;
+  --carte-2: #222125;
+  --texte: #F4F2F5;
+  --texte-2: #ABA7B0;
+  --texte-3: #8E8A93;
+  --ligne: rgba(255, 255, 255, 0.09);
+  --ligne-forte: rgba(255, 255, 255, 0.16);
+  --accent: #E08EAA;
+  --accent-fort: #EBA6BD;
+  --accent-doux: rgba(224, 142, 170, 0.13);
+  --or: #D4B074;
+  --or-doux: rgba(212, 176, 116, 0.18);
+  --sur-accent: #2A0C17;
+  --positif: #4CC48A;
+  --positif-doux: rgba(76, 196, 138, 0.13);
+  --negatif: #FF7A70;
+  --negatif-doux: rgba(255, 122, 112, 0.13);
+  --attention: #F2A649;
+  --attention-doux: rgba(242, 166, 73, 0.14);
+  --ombre: 0 0 0 1px rgba(255, 255, 255, 0.04);
+  --ombre-haute: 0 -8px 32px rgba(0, 0, 0, 0.5);
+  color-scheme: dark;
 }
 
 /* ---------- Base ---------- */
@@ -273,6 +277,7 @@ select.saisie { background-image: none; }
 .logo {
   display: inline-flex; align-items: center; justify-content: center; flex: none;
   border-radius: 50%; background: var(--accent); color: var(--sur-accent);
+  box-shadow: 0 0 0 2px var(--fond), 0 0 0 3.5px var(--or);
   font-family: var(--police-titre); font-weight: 700; letter-spacing: -0.02em;
 }
 .pastille {
@@ -298,7 +303,11 @@ select.saisie { background-image: none; }
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
   height: var(--hauteur-nav); color: var(--texte-3); font-size: 11px; font-weight: 600; letter-spacing: 0.01em;
 }
-.nav a[aria-current="page"] { color: var(--accent); }
+.nav a[aria-current="page"] { color: var(--accent); position: relative; }
+.nav a[aria-current="page"]::before {
+  content: ""; position: absolute; top: 0; left: 50%; width: 28px; height: 2.5px;
+  transform: translateX(-50%); border-radius: 0 0 3px 3px; background: var(--or);
+}
 body.sans-nav .nav { display: none; }
 
 /* ---------- Écran Vendre ---------- */
@@ -368,7 +377,7 @@ body.sans-nav .nav { display: none; }
 }
 .barre-panier-resume:active { background: rgba(255, 255, 255, 0.08); }
 .barre-panier-icone { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 50%; background: rgba(255, 255, 255, 0.12); flex: none; }
-@media (prefers-color-scheme: dark) { .barre-panier-icone { background: rgba(0, 0, 0, 0.1); } }
+:root[data-mode="sombre"] .barre-panier-icone { background: rgba(0, 0, 0, 0.1); }
 .barre-panier-nombre {
   position: absolute; top: -4px; right: -6px; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px;
   display: inline-flex; align-items: center; justify-content: center;
@@ -542,7 +551,7 @@ button.carte-stat { border: 0; text-align: left; }
 .toast-texte { flex: 1; }
 .toast-erreur { background: var(--negatif); color: #fff; }
 .toast-action { border: 0; background: rgba(255, 255, 255, 0.16); color: inherit; font-weight: 700; min-height: 40px; padding: 0 14px; border-radius: 10px; }
-@media (prefers-color-scheme: dark) { .toast-action { background: rgba(0, 0, 0, 0.12); } }
+:root[data-mode="sombre"] .toast-action { background: rgba(0, 0, 0, 0.12); }
 
 .vide { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 12px; padding: var(--s5) var(--s3); }
 .vide p { max-width: 320px; }
@@ -567,7 +576,7 @@ button.carte-stat { border: 0; text-align: left; }
 
 .accueil { min-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 64px); display: flex; flex-direction: column; justify-content: center; gap: var(--s4); max-width: 440px; margin: 0 auto; padding: var(--s3) 0; }
 .accueil-marque { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 12px; }
-.accueil-icone { width: 88px; height: 88px; border-radius: 24px; background: var(--accent); color: var(--sur-accent); display: flex; align-items: center; justify-content: center; box-shadow: 0 12px 32px color-mix(in srgb, var(--accent) 30%, transparent); }
+.accueil-icone { width: 88px; height: 88px; border-radius: 24px; background: var(--accent); color: #F7EAF0; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 1.5px var(--or-doux), 0 12px 32px color-mix(in srgb, var(--accent) 30%, transparent); }
 .accueil-nom { font: 700 34px/1.1 var(--police-titre); letter-spacing: -0.03em; }
 
 /* ---------- Calendrier ---------- */
