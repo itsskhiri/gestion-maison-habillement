@@ -237,7 +237,9 @@ function resoudreClient(etat, c, quand) {
 // en dessous de son prix d'achat rend la vente invalide.
 // entree = {
 //   id?, devise?, taux?,
-//   lignes: [{ article_id, quantite, prix_unitaire }],   prix de vente d'une pièce, devise de la vente
+//   lignes: [{ article_id, quantite, prix_unitaire, devise? }]   prix d'une pièce, dans la devise de la
+//           ligne (par défaut celle de la vente). Une vente « $ + FC » mélange des lignes en $ et en FC :
+//           on obtient alors un total en dollars ET un total en francs (`totaux`).
 //   paiement: { type: 'payee', encaissements?: [{ devise, montant, mode }] }
 //           | { type: 'credit', client: { id? | nom, telephone? }, acompte?: { devise, montant, mode } }
 // }
@@ -259,20 +261,25 @@ export function creerVente(etat, entree, opts) {
     const quantite = entier(lg.quantite, 'La quantité', 1, 100000);
     if (lg.prix_unitaire == null || lg.prix_unitaire === '') echec(`Saisis le prix de vente de « ${a.nom} ».`);
     const prix = entier(lg.prix_unitaire, `Le prix de vente de « ${a.nom} »`, 1);
-    const achat = prixAchatEn(a, devise, taux);
+    const dl = verifDevise(lg.devise ?? devise);
+    const achat = prixAchatEn(a, dl, taux);
     if (prix < achat) {
-      echec(`Vente invalide : « ${a.nom} » est vendu ${formater(prix, devise)}, sous son prix d'achat (${formater(achat, devise)}).`);
+      echec(`Vente invalide : « ${a.nom} » est vendu ${formater(prix, dl)}, sous son prix d'achat (${formater(achat, dl)}).`);
     }
     besoin.set(a.id, (besoin.get(a.id) || 0) + quantite);
     // Coût d'achat de la ligne, dans la devise principale, au taux de la vente.
-    return { a, quantite, prix, cout: convertir(a.prix_achat * quantite, a.devise, p.devise_principale, taux) };
+    return { a, quantite, prix, devise: dl, cout: convertir(a.prix_achat * quantite, a.devise, p.devise_principale, taux) };
   });
   for (const [aid, q] of besoin) {
     const a = etat.articles.find((x) => x.id === aid);
     if (q > a.quantite) echec(`Stock insuffisant pour « ${a.nom} » (il en reste ${a.quantite}).`);
   }
-  const total = lignes.reduce((s, x) => s + x.quantite * x.prix, 0);
-  const total_principal = convertir(total, devise, p.devise_principale, taux);
+  // Total par devise (« Total dollars » et « Total francs »), puis total dans la devise de la vente.
+  const totaux = { USD: 0, CDF: 0 };
+  for (const x of lignes) totaux[x.devise] += x.quantite * x.prix;
+  const devisesVendues = ['USD', 'CDF'].filter((d) => totaux[d] > 0);
+  const total = devisesVendues.reduce((s, d) => s + convertir(totaux[d], d, devise, taux), 0);
+  const total_principal = devisesVendues.reduce((s, d) => s + convertir(totaux[d], d, p.devise_principale, taux), 0);
   const cout_principal = lignes.reduce((s, x) => s + x.cout, 0);
 
   const pay = entree.paiement || { type: 'payee' };
@@ -300,8 +307,17 @@ export function creerVente(etat, entree, opts) {
         montant: entier(pay.acompte.montant, "L'acompte", 1),
         mode: verifMode(pay.acompte.mode || 'cash'),
       };
-      acompte.contre = convertir(acompte.montant, acompte.devise, devise, taux);
-      if (acompte.contre >= total) echec("L'acompte couvre tout le total : choisis plutôt « Payé ».");
+      if (devisesVendues.length === 1) {
+        // Vente dans une seule devise : l'acompte peut être donné dans l'autre devise (converti).
+        acompte.parDevise = { [devisesVendues[0]]: convertir(acompte.montant, acompte.devise, devisesVendues[0], taux) };
+        if (acompte.parDevise[devisesVendues[0]] >= totaux[devisesVendues[0]]) echec("L'acompte couvre tout le total : choisis plutôt « Payé ».");
+      } else {
+        // Vente $ + FC : l'acompte réduit la dette de sa propre devise.
+        if (acompte.montant > totaux[acompte.devise]) {
+          echec(`L'acompte dépasse le total en ${acompte.devise === 'USD' ? 'dollars' : 'francs'} (${formater(totaux[acompte.devise], acompte.devise)}).`);
+        }
+        acompte.parDevise = { [acompte.devise]: acompte.montant };
+      }
     }
   } else {
     echec('Type de vente inconnu.');
@@ -311,7 +327,7 @@ export function creerVente(etat, entree, opts) {
   const l = lot(etat);
   if (nouveauClient) l.inserer('clients', nouveauClient);
   const vente = {
-    id, cree_le: quand, devise, taux, total, total_principal, cout_principal,
+    id, cree_le: quand, devise, taux, total, totaux, total_principal, cout_principal,
     statut: pay.type, client_id: client?.id ?? null,
     mode: pay.type === 'payee' ? encaissements[0].mode : acompte?.mode ?? null,
     annule_le: null,
@@ -319,12 +335,12 @@ export function creerVente(etat, entree, opts) {
   l.inserer('ventes', vente);
 
   const principaux = repartir(
-    lignes.map((x) => convertir(x.quantite * x.prix, devise, p.devise_principale, taux)),
+    lignes.map((x) => convertir(x.quantite * x.prix, x.devise, p.devise_principale, taux)),
     total_principal,
   );
   lignes.forEach((x, i) => l.inserer('lignes_de_vente', {
     id: uuid(), vente_id: id, article_id: x.a.id, nom: x.a.nom, categorie: x.a.categorie,
-    quantite: x.quantite, prix_unitaire: x.prix, cout_principal: x.cout, montant_principal: principaux[i],
+    quantite: x.quantite, prix_unitaire: x.prix, devise: x.devise, cout_principal: x.cout, montant_principal: principaux[i],
   }));
 
   for (const [aid, q] of besoin) {
@@ -344,12 +360,16 @@ export function creerVente(etat, entree, opts) {
       mode: e.mode, montant_principal: parts[i], quand,
     })));
   } else {
-    const avance = acompte?.contre ?? 0;
-    l.inserer('dettes', {
-      id: uuid(), client_id: client.id, vente_id: id, devise, taux,
-      montant_vente: total, acompte: avance, montant: total - avance,
-      cree_le: quand, annule_le: null,
-    });
+    // Une dette par devise vendue (une vente $ + FC à crédit donne une dette en $ et une en FC).
+    for (const d of devisesVendues) {
+      const avance = acompte?.parDevise[d] ?? 0;
+      if (totaux[d] - avance <= 0) continue;
+      l.inserer('dettes', {
+        id: uuid(), client_id: client.id, vente_id: id, devise: d, taux,
+        montant_vente: totaux[d], acompte: avance, montant: totaux[d] - avance,
+        cree_le: quand, annule_le: null,
+      });
+    }
     if (acompte) {
       l.inserer('mouvements_caisse', mouvement({
         type: 'entree', source: 'acompte', reference_id: id, devise: acompte.devise,
@@ -364,8 +384,8 @@ export function creerVente(etat, entree, opts) {
 export function annulerVente(etat, id, opts) {
   const v = trouver(etat.ventes, id, 'Vente introuvable.');
   if (v.annule_le) return rien(v);
-  const dette = etat.dettes.find((d) => d.vente_id === id && !d.annule_le);
-  if (dette && dejaPaye(etat, dette.id) > 0) {
+  const dettes = etat.dettes.filter((d) => d.vente_id === id && !d.annule_le);
+  if (dettes.some((d) => dejaPaye(etat, d.id) > 0)) {
     echec("Cette vente a déjà reçu des paiements. Annule d'abord ces paiements dans la fiche du client.");
   }
   const quand = date(opts);
@@ -380,7 +400,7 @@ export function annulerVente(etat, id, opts) {
     m.annule_le = quand;
     l.maj('mouvements_caisse', m);
   }
-  if (dette) { dette.annule_le = quand; l.maj('dettes', dette); }
+  for (const d of dettes) { d.annule_le = quand; l.maj('dettes', d); }
   return { changes: l.changes, resultat: v };
 }
 
@@ -653,13 +673,17 @@ export function bientotEnRupture(etat, n = 5) {
 // Détail d'une vente : lignes, client, dette, encaissements.
 export function detailVente(etat, id) {
   const vente = trouver(etat.ventes, id, 'Vente introuvable.');
-  const dette = etat.dettes.find((d) => d.vente_id === id) || null;
+  const dettes = etat.dettes.filter((d) => d.vente_id === id);
+  const reste = { USD: 0, CDF: 0 };
+  const acomptes = { USD: 0, CDF: 0 };
+  for (const d of dettes) { reste[d.devise] += resteDette(etat, d); acomptes[d.devise] += d.acompte; }
   return {
     vente,
     lignes: etat.lignes_de_vente.filter((l) => l.vente_id === id),
     client: vente.client_id ? etat.clients.find((c) => c.id === vente.client_id) || null : null,
-    dette,
-    reste: dette ? resteDette(etat, dette) : 0,
+    dettes,
+    reste,
+    acomptes,
     encaissements: etat.mouvements_caisse.filter((m) => m.reference_id === id),
   };
 }
@@ -818,7 +842,7 @@ export function rapportDuJour(etat, cle) {
     vente: v,
     lignes: etat.lignes_de_vente.filter((l) => l.vente_id === v.id),
     client: client(v.client_id),
-    dette: etat.dettes.find((d) => d.vente_id === v.id) || null,
+    acompte: etat.dettes.some((d) => d.vente_id === v.id && d.acompte > 0),
   }));
   const paiements = etat.paiements_dette.filter(duJour).sort((a, b) => a.cree_le.localeCompare(b.cree_le))
     .map((pm) => ({ paiement: pm, client: client(pm.client_id), reste_apres: apres.get(pm.id) ?? 0 }));

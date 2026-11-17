@@ -19,9 +19,11 @@ Pensée d'abord pour l'iPhone (Safari), compatible Android et ordinateur.
 ## Ce que fait l'étape 1
 
 - **Vendre** : grille d'articles avec leur **prix d'achat**, panier (bouton − sur la carte). À la validation,
-  le vendeur **saisit le prix de vente de chaque produit** discuté avec le client (en dollars ou en francs) ;
+  le vendeur **saisit le prix de vente de chaque produit** discuté avec le client : prix en **dollars**, en
+  **francs**, ou **$ + FC** (chaque produit dans sa devise, puis **Total dollars** et **Total francs**) ;
   un produit vendu **sous son prix d'achat apparaît en rouge (« Vente invalide »)** et bloque la vente.
-  Le client paie en **dollars, en francs ou les deux** ; le bénéfice s'affiche par produit et au total. Paiement **Cash,
+  Le client paie les dollars en dollars et les francs en francs ; à crédit, une vente $ + FC crée une dette
+  en dollars et une en francs. Le bénéfice s'affiche par produit et au total. Paiement **Cash,
   M-Pesa, Airtel Money, Orange Money**, **vente à crédit avec acompte**, reçu WhatsApp (qui ne montre
   jamais le prix d'achat), annulation, historique des ventes. Taux du jour fixé par le vendeur.
 - **Articles** : nom + prix d'achat + quantité (catégorie facultative), « Ajouter un autre », nouvel
@@ -87,7 +89,7 @@ complet demandent HTTPS : utilise plutôt le lien Netlify ci-dessous.
 
 ## Tests
 
-- **Moteur** (27 tests : montants, conversions, prix par produit, vente invalide, bénéfice, stock, dettes, acomptes, caisse, rapports) :
+- **Moteur** (29 tests : montants, conversions, prix par produit, vente invalide, bénéfice, stock, dettes, acomptes, caisse, rapports) :
   lancer le serveur local puis ouvrir http://localhost:8000/tests/ — le titre doit afficher « OK ».
 - Les parcours au toucher et les captures d'écran (375, 390, 430 px, clair et sombre) ont été vérifiés
   avec Playwright sur Edge.

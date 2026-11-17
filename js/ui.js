@@ -53,6 +53,12 @@ export const fm = (unites, devise, opts) => formater(unites, devise, opts);
 export const fmMulti = (parDevise, principale) => formaterMulti(parDevise, principale);
 export const num = (texte, classe = '') => h('span', { class: `num ${classe}` }, texte);
 
+// Total d'une vente : « 40 $ + 57 000 FC » pour une vente $ + FC, sinon le total dans sa devise.
+export function fmVente(v) {
+  if (v.totaux && v.totaux.USD > 0 && v.totaux.CDF > 0) return `${formater(v.totaux.USD, 'USD')} + ${formater(v.totaux.CDF, 'CDF')}`;
+  return formater(v.total, v.devise);
+}
+
 // Montants de plusieurs devises empilés (devise principale en premier, en plus grand).
 export function montantsEmpiles(parDevise, principale, classes = ['chiffre-xl', 'chiffre-l'], classeEnPlus = '') {
   const devises = ['USD', 'CDF'].filter((d) => parDevise[d]);

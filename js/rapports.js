@@ -2,7 +2,7 @@
 // calendrier, et rapport complet d'un jour avec partage WhatsApp.
 
 import * as api from './api.js';
-import { h, icone, enTete, fm, fmMulti, ouvrirFeuille, partager, etatVide } from './ui.js';
+import { h, icone, enTete, fm, fmMulti, fmVente, ouvrirFeuille, partager, etatVide } from './ui.js';
 import { formater } from './money.js';
 import { modePaiement } from './reference.js';
 import { aujourdhui, ajouterJours, ajouterMois, heure, libelleJour, libelleMois } from './temps.js';
@@ -189,17 +189,17 @@ const stat = (libelle, valeur, classe = '') => h('div', { class: 'carte-stat' },
 const titreSection = (titre, n) => h('div', { class: 'section-titre' },
   h('h2', { class: 'surtitre' }, titre), h('span', { class: 'legende num' }, String(n)));
 
-function ligneVente({ vente: v, lignes, client, dette }) {
+function ligneVente({ vente: v, lignes, client, acompte }) {
   const resume = lignes.map((l) => (l.quantite > 1 ? `${l.quantite} × ` : '') + l.nom).join(', ');
   const statut = v.annule_le ? h('span', { class: 'badge badge-zero' }, `Annulée ${heure(v.annule_le)}`)
     : v.statut === 'payee' ? h('span', { class: 'badge badge-ok' }, `Payée · ${modePaiement(v.mode)?.nom}`)
-      : dette?.acompte ? h('span', { class: 'badge badge-bas' }, 'Acompte reçu') : h('span', { class: 'badge badge-accent' }, 'À crédit');
+      : acompte ? h('span', { class: 'badge badge-bas' }, 'Acompte reçu') : h('span', { class: 'badge badge-accent' }, 'À crédit');
   return h('button', { class: 'liste-ligne', onclick: () => ouvrirRecu(v.id) },
     h('span', { class: 'liste-ligne-corps' },
       h('span', { class: `liste-ligne-titre${v.annule_le ? ' barre-annule' : ''}` }, resume),
       h('span', { class: 'liste-ligne-sous' }, `${heure(v.cree_le)}${client ? ' · ' + client.nom : ''}`)),
     h('span', { class: 'liste-ligne-fin' },
-      h('span', { class: `liste-ligne-montant${v.annule_le ? ' barre-annule' : ''}` }, fm(v.total, v.devise)),
+      h('span', { class: `liste-ligne-montant${v.annule_le ? ' barre-annule' : ''}` }, fmVente(v)),
       statut));
 }
 

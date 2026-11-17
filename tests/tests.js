@@ -143,6 +143,40 @@ test('Plusieurs produits, chacun avec son prix : total, bénéfice et catégorie
   egal(e.lignes_de_vente.map((l) => l.prix_unitaire), [40000, 45000], 'prix de chaque produit conservés');
 });
 
+test('Vente $ + FC : un produit en dollars, un en francs -> total dollars et total francs', () => {
+  const { e, robe, jean } = boutique();
+  const v = m.creerVente(e, { lignes: [
+    { article_id: robe.id, quantite: 2, prix_unitaire: 40000, devise: 'CDF' },
+    { article_id: jean.id, quantite: 1, prix_unitaire: 1500, devise: 'USD' },
+  ], paiement: { type: 'payee', encaissements: [{ devise: 'CDF', montant: 80000 }, { devise: 'USD', montant: 1500 }] } }).resultat;
+  egal(v.totaux, { USD: 1500, CDF: 80000 });
+  egal(solde(e).USD, 1500, 'dollars en caisse');
+  egal(solde(e).CDF, 80000, 'francs en caisse');
+  const s = m.statsPeriode(e, ...TOUT);
+  egal(s.ventes, 80000 + 42750, 'ventes dans la devise principale');
+  egal(s.benefice, 80000 + 42750 - 60000 - 34200);
+  // un jean vendu 11 $ (sous 12 $) en ligne dollars : refusé
+  refuse(() => m.creerVente(e, { lignes: [{ article_id: jean.id, quantite: 1, prix_unitaire: 1100, devise: 'USD' }] }), 'Vente invalide');
+});
+
+test('Vente $ + FC à crédit : une dette en dollars et une en francs, acompte dans sa devise', () => {
+  const { e, robe, jean } = boutique();
+  const v = m.creerVente(e, { lignes: [
+    { article_id: robe.id, quantite: 1, prix_unitaire: 45000, devise: 'CDF' },
+    { article_id: jean.id, quantite: 1, prix_unitaire: 2000, devise: 'USD' },
+  ], paiement: { type: 'credit', client: { nom: 'Aline' }, acompte: { devise: 'USD', montant: 500, mode: 'cash' } } }).resultat;
+  const fiche = m.ficheClient(e, v.client_id);
+  egal(fiche.reste, { USD: 1500, CDF: 45000 });
+  egal(solde(e).USD, 500, 'acompte en dollars dans la caisse');
+  refuse(() => m.creerVente(e, { lignes: [
+    { article_id: robe.id, quantite: 1, prix_unitaire: 45000, devise: 'CDF' },
+    { article_id: jean.id, quantite: 1, prix_unitaire: 2000, devise: 'USD' },
+  ], paiement: { type: 'credit', client: { nom: 'Aline' }, acompte: { devise: 'USD', montant: 2001 } } }), 'dépasse');
+  // annuler la vente annule les deux dettes
+  m.annulerVente(e, v.id);
+  egal(m.totalARecevoir(e), { USD: 0, CDF: 0 });
+});
+
 test('Paiement mixte dollars + francs', () => {
   const { e, robe } = boutique();
   // Prix convenu 100 000 FC : le client donne 20 $ (57 000 FC) + 43 000 FC
