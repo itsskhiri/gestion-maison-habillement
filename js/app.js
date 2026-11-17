@@ -13,6 +13,7 @@ import * as factures from './factures.js';
 import * as rapports from './rapports.js';
 import * as profil from './profil.js';
 import { verifierInstallation } from './installation.js';
+import { navigation } from './ecriture.js';
 
 const racine = document.getElementById('app');
 const nav = document.querySelector('.nav');
@@ -66,10 +67,12 @@ async function afficher() {
   const defilement = memeRoute ? window.scrollY : 0;
   routePrecedente = chemin;
 
-  const conteneur = h('div', { class: 'ecran' });
+  const conteneur = h('div', { class: memeRoute ? 'ecran' : 'ecran ecran-entree' });
   const attente = setTimeout(() => { if (monJeton === jeton) racine.replaceChildren(squelette()); }, 150);
   try {
+    navigation.nouvelEcran = !memeRoute;
     await ecran(conteneur, ...params);
+    navigation.nouvelEcran = false;
     clearTimeout(attente);
     if (monJeton !== jeton) return; // une autre navigation a eu lieu entre-temps
     racine.replaceChildren(conteneur);
@@ -99,6 +102,7 @@ async function demarrer() {
     return;
   }
   window.addEventListener('hashchange', afficher);
+  suivreDefilement();
   api.surChangement(afficher);
   await afficher();
   verifierInstallation();
@@ -106,6 +110,26 @@ async function demarrer() {
   if ('serviceWorker' in navigator && location.protocol === 'https:') {
     navigator.serviceWorker.register('sw.js').catch(() => { /* l'app marche aussi sans */ });
   }
+}
+
+// Barre du bas « verre » : se réduit quand on descend dans la page, revient quand on remonte.
+// L'en-tête prend une fine ombre dès que la page défile.
+function suivreDefilement() {
+  let dernier = window.scrollY;
+  let enAttente = false;
+  window.addEventListener('scroll', () => {
+    if (enAttente) return;
+    enAttente = true;
+    requestAnimationFrame(() => {
+      const y = window.scrollY;
+      if (Math.abs(y - dernier) > 6) {
+        document.body.classList.toggle('nav-compacte', y > dernier && y > 80);
+        dernier = y;
+      }
+      document.body.classList.toggle('defile', y > 4);
+      enAttente = false;
+    });
+  }, { passive: true });
 }
 
 demarrer();

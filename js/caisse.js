@@ -23,9 +23,11 @@ function tendance(actuel, precedent, inverse = false) {
     icone(pct >= 0 ? 'hausse' : 'baisse', 14), `${Math.abs(pct)} %`);
 }
 
+const ICONE_STAT = { Ventes: 'vendre', Encaissé: 'entree', Dépenses: 'sortie', Bénéfice: 'graphique' };
+
 function carteStat(libelle, valeur, devise, actuel, precedent, { inverse = false, classe = '' } = {}) {
   return h('div', { class: 'carte-stat' },
-    h('span', { class: 'legende' }, libelle),
+    h('span', { class: 'legende stat-tete' }, h('span', { class: 'stat-icone', 'aria-hidden': 'true' }, icone(ICONE_STAT[libelle] || 'graphique', 16)), libelle),
     h('span', { class: `chiffre-m ${classe}` }, fm(valeur, devise)),
     tendance(actuel, precedent, inverse));
 }
@@ -49,7 +51,7 @@ export async function afficher(racine, { redessin = false } = {}) {
   // En caisse
   const totalConverti = convertir(solde.USD, 'USD', dev, p.taux) + convertir(solde.CDF, 'CDF', dev, p.taux);
   const modes = Object.entries(solde.modes).filter(([, v]) => v.USD || v.CDF);
-  racine.append(h('section', { class: 'grand-total' },
+  racine.append(h('section', { class: 'grand-total heros' },
     h('p', { class: 'legende' }, 'En caisse'),
     montantsEmpiles(solde, dev, ['chiffre-xl', 'chiffre-l']),
     solde.USD && solde.CDF ? h('p', { class: 'texte-2', style: 'margin-top:4px' }, `Soit environ ${fm(totalConverti, dev)} au taux de ${formater(p.taux, 'CDF')}`) : null,

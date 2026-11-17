@@ -2,6 +2,7 @@
 // messages, confirmations, contrôles de saisie et formats d'affichage.
 
 import { ICONES } from './icons.js';
+import { titreAnime } from './ecriture.js';
 import { formater, formaterMulti, lireMontant, versSaisie, DEVISES } from './money.js';
 import { categorie as infoCategorie, MODES } from './reference.js';
 
@@ -93,7 +94,7 @@ export function enTete({ titre, sousTitre, retour, actions = [] }) {
   return h('header', { class: 'entete' },
     retour ? h('button', { class: 'btn-icone', 'aria-label': 'Retour', onclick: () => (typeof retour === 'function' ? retour() : (location.hash = retour)) }, icone('gauche', 24)) : null,
     h('div', { class: 'entete-titres' },
-      h('h1', { class: 'titre' }, titre),
+      titreAnime(h('h1', { class: 'titre' }), titre),
       sousTitre ? h('p', { class: 'legende' }, sousTitre) : null),
     h('div', { class: 'entete-actions' }, ...actions, boutonTheme(), boutonProfil()));
 }

@@ -199,8 +199,10 @@ export async function afficherJour(racine, cle) {
   }
 }
 
+const ICONE_STAT = { 'Ventes du jour': 'vendre', Bénéfice: 'graphique', Encaissé: 'entree', Dépenses: 'sortie', 'Prix d’achat vendu': 'articles', 'Nouvelles dettes': 'dettes' };
 const stat = (libelle, valeur, classe = '') => h('div', { class: 'carte-stat' },
-  h('span', { class: 'legende' }, libelle), h('span', { class: `chiffre-m ${classe}` }, valeur));
+  h('span', { class: 'legende stat-tete' }, h('span', { class: 'stat-icone', 'aria-hidden': 'true' }, icone(ICONE_STAT[libelle] || 'graphique', 16)), libelle),
+  h('span', { class: `chiffre-m ${classe}` }, valeur));
 
 const titreSection = (titre, n) => h('div', { class: 'section-titre' },
   h('h2', { class: 'surtitre' }, titre), h('span', { class: 'legende num' }, String(n)));

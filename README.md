@@ -46,6 +46,15 @@ Pensée d'abord pour l'iPhone (Safari), compatible Android et ordinateur.
 Les données sont enregistrées **sur l'appareil** (IndexedDB) : chaque téléphone a ses propres données
 tant que l'étape 2 (comptes + serveur) n'est pas faite.
 
+## Design
+
+- Thème clair ivoire / bordeaux avec une touche dorée (sombre au choix, bouton soleil / lune).
+- Cartes « héros » en dégradé pour les chiffres clés (Ventes du jour, En caisse), icônes devant les chiffres.
+- En-tête en verre dépoli collé en haut ; barre du bas flottante en verre qui se réduit quand on descend.
+- Écriture progressive (curseur clignotant puis fondu) : nom de l'application, nom de la boutique, titres des
+  écrans à leur ouverture. Fondu d'entrée entre les écrans ; le montant des ventes du jour « monte » à sa valeur.
+- Tout est désactivé si le téléphone demande de réduire les animations. Aucun texte n'est jamais coupé.
+
 ## Règles de fiabilité
 
 - Montants stockés en **nombres entiers** : centimes pour le dollar, francs pour le franc. Aucun calcul en

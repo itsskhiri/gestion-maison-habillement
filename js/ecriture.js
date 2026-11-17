@@ -9,7 +9,33 @@
 //   - lecteurs d'écran : le texte complet est lu tout de suite (aria-label) ;
 //   - « réduire les animations » activé sur le téléphone : texte affiché directement.
 
-const reduireAnimations = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+export const reduireAnimations = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
+// Vrai pendant le dessin d'un écran qu'on vient d'ouvrir (faux quand il est seulement redessiné
+// après une opération) : les titres ne s'écrivent qu'à l'arrivée sur l'écran.
+export const navigation = { nouvelEcran: true };
+
+// Titre d'écran : écrit progressivement à l'arrivée sur l'écran, affiché directement sinon.
+export function titreAnime(el, texte, options = {}) {
+  if (navigation.nouvelEcran) ecrire(el, texte, { delai: 120, vitesse: 42, ...options });
+  else el.textContent = texte;
+  return el;
+}
+
+// Montant qui « monte » jusqu'à sa valeur (à l'arrivée sur l'écran seulement).
+export function compteur(el, valeur, formater, duree = 700) {
+  el.textContent = formater(valeur);
+  if (!navigation.nouvelEcran || reduireAnimations() || !valeur) return el;
+  const debut = performance.now();
+  const pas = (t) => {
+    const k = Math.min(1, (t - debut) / duree);
+    const facilite = 1 - (1 - k) ** 3; // ralentit en arrivant
+    el.textContent = formater(Math.round(valeur * facilite));
+    if (k < 1) requestAnimationFrame(pas);
+  };
+  requestAnimationFrame(pas);
+  return el;
+}
 
 /**
  * Écrit `texte` dans `el` caractère par caractère.

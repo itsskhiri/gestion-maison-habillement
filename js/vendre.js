@@ -12,7 +12,7 @@ import { convertir, formater, lireEntier } from './money.js';
 import { CATEGORIES, modePaiement } from './reference.js';
 import { aujourdhui, heure, cleJour, libelleJour, dateNumerique } from './temps.js';
 import { ouvrirFormulaireArticle } from './articles.js';
-import { ecrire } from './ecriture.js';
+import { ecrire, titreAnime, compteur } from './ecriture.js';
 import { imprimerFacture, boutonImprimer } from './impression.js';
 
 // État de l'écran conservé entre deux affichages (le panier ne se vide pas en changeant d'onglet).
@@ -45,9 +45,9 @@ export async function afficher(racine) {
         h('a', { class: 'btn-icone', href: '#/ventes', 'aria-label': 'Historique des ventes' }, icone('historique', 24)),
         boutonTheme(),
         boutonProfil())),
-    h('section', { class: 'resume-jour' },
-      h('p', { class: 'legende' }, 'Ventes du jour'),
-      h('p', { class: 'chiffre-xl' }, fm(stats.ventes, p.devise_principale)),
+    h('section', { class: 'resume-jour heros' },
+      titreAnime(h('p', { class: 'legende' }), 'Ventes du jour'),
+      compteur(h('p', { class: 'chiffre-xl' }), stats.ventes, (v) => fm(v, p.devise_principale)),
       h('div', { class: 'resume-jour-pied' },
         h('span', { class: 'texte-2' }, 'Bénéfice ', num(fm(stats.benefice, p.devise_principale), stats.benefice < 0 ? 'negatif' : ''),
           ` · ${stats.nbVentes} vente${stats.nbVentes > 1 ? 's' : ''}`),
