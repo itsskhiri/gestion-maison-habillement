@@ -5,6 +5,7 @@ import * as api from './api.js';
 import { h, icone, champ, saisie, saisieLongue, segment, erreur, enCours, vibrer } from './ui.js';
 import { lireEntier } from './money.js';
 import { CONFIG } from '../config.js';
+import { ecrire } from './ecriture.js';
 
 export function afficher(racine) {
   let devise = 'USD';
@@ -49,10 +50,16 @@ export function afficher(racine) {
   }));
   [nom, taux].forEach((x) => x.addEventListener('input', () => x.classList.remove('invalide')));
 
+  // Nom de l'application puis phrase d'accueil, écrits progressivement.
+  const titre = h('h1', { class: 'accueil-nom' });
+  const sousTitre = h('p', { class: 'texte-2' });
+  ecrire(titre, CONFIG.nomApp, { delai: 250, vitesse: 90 })
+    .then(() => ecrire(sousTitre, 'Ventes, stock, dettes et caisse de ta boutique. Simple et fiable.', { vitesse: 28 }));
+
   racine.append(h('div', { class: 'accueil' },
     h('div', { class: 'accueil-marque' },
       h('div', { class: 'accueil-icone' }, icone('articles', 52)),
-      h('h1', { class: 'accueil-nom' }, CONFIG.nomApp),
-      h('p', { class: 'texte-2' }, 'Ventes, stock, dettes et caisse de ta boutique. Simple et fiable.')),
+      titre,
+      sousTitre),
     formulaire));
 }

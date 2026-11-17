@@ -12,6 +12,7 @@ import { convertir, formater, lireEntier } from './money.js';
 import { CATEGORIES, modePaiement } from './reference.js';
 import { aujourdhui, heure, cleJour, libelleJour, dateNumerique } from './temps.js';
 import { ouvrirFormulaireArticle } from './articles.js';
+import { ecrire } from './ecriture.js';
 import { imprimerFacture, boutonImprimer } from './impression.js';
 
 // État de l'écran conservé entre deux affichages (le panier ne se vide pas en changeant d'onglet).
@@ -19,6 +20,7 @@ const etatEcran = {
   panier: new Map(),   // article_id -> { quantite, prix: prix d'une pièce ou null, montants: { USD, CDF } en « $ + FC » }
   recherche: '',
   categorie: 'tout',
+  nomEcrit: null,      // { nom, el, enCours } : nom de boutique animé une seule fois à l'ouverture
   deviseVente: null,   // 'USD', 'CDF' ou 'mixte' ($ + FC) — par défaut : devise principale
   taux: null,          // taux modifié pour la vente en cours (sinon taux du jour)
 };
@@ -38,7 +40,7 @@ export async function afficher(racine) {
   racine.append(
     h('header', { class: 'entete entete-vendre' },
       logo(p.nom_boutique, 40),
-      h('div', { class: 'entete-nom' }, p.nom_boutique),
+      nomBoutique(p.nom_boutique),
       h('div', { class: 'entete-actions' },
         h('a', { class: 'btn-icone', href: '#/ventes', 'aria-label': 'Historique des ventes' }, icone('historique', 24)),
         boutonTheme(),
@@ -162,6 +164,20 @@ export async function afficher(racine) {
 
   dessinerGrille();
   majBarre();
+}
+
+// Nom de la boutique en haut de l'écran : écrit progressivement à l'ouverture de l'application
+// (et après un changement de nom), puis affiché directement.
+function nomBoutique(nom) {
+  const anim = etatEcran.nomEcrit;
+  // Écran redessiné pendant l'animation : on reprend le même élément, l'écriture continue.
+  if (anim?.nom === nom && anim.enCours) return anim.el;
+  const el = h('div', { class: 'entete-nom' });
+  if (anim?.nom === nom) { el.textContent = nom; return el; }
+  const suivi = { nom, el, enCours: true };
+  etatEcran.nomEcrit = suivi;
+  ecrire(el, nom, { delai: 200, vitesse: 55 }).then(() => { suivi.enCours = false; });
+  return el;
 }
 
 // Mode des prix de vente : 'USD', 'CDF' ou 'mixte' ($ + FC : chaque produit est payé en dollars

@@ -2,12 +2,12 @@
 // Stratégie : réponse immédiate depuis le cache, puis mise à jour en arrière-plan.
 // Changer VERSION à chaque mise en ligne pour remplacer l'ancienne copie.
 
-const VERSION = 'cintre-0.5.4';
+const VERSION = 'cintre-0.6.0';
 const FICHIERS = [
   './', './index.html', './manifest.json', './config.js', './css/style.css',
   './js/app.js', './js/api.js', './js/db.js', './js/moteur.js', './js/money.js', './js/temps.js',
   './js/reference.js', './js/ui.js', './js/icons.js', './js/charts.js', './js/exemples.js',
-  './js/installation.js', './js/theme.js', './js/accueil.js', './js/vendre.js', './js/articles.js', './js/dettes.js',
+  './js/installation.js', './js/theme.js', './js/ecriture.js', './js/accueil.js', './js/vendre.js', './js/articles.js', './js/dettes.js',
   './js/depenses.js', './js/caisse.js', './js/factures.js', './js/impression.js', './js/rapports.js', './js/profil.js',
   './icons/icone.svg', './icons/icone-192.png', './icons/icone-512.png', './icons/apple-touch-icon.png',
 ];
