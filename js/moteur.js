@@ -93,6 +93,14 @@ export function exigerProfil(etat) {
   return etat.profil;
 }
 
+// Répartit `total` selon des poids, en entiers, avec une somme exacte.
+function repartirProportionnel(poids, total) {
+  const somme = poids.reduce((a, b) => a + b, 0) || 1;
+  const parts = poids.map((w) => Math.floor((w * total) / somme));
+  parts[parts.length - 1] += total - parts.reduce((a, b) => a + b, 0);
+  return parts;
+}
+
 // Ajuste le dernier montant pour que la somme soit exactement `total` (écarts d'arrondi).
 function repartir(montants, total) {
   const r = montants.slice();
@@ -157,7 +165,7 @@ export const articlesActifs = (etat) => etat.articles.filter((a) => !a.supprime_
 function champsArticle(entree, partiel = false) {
   const r = {};
   if (!partiel || 'nom' in entree) r.nom = texte(entree.nom, "Le nom de l'article", 80);
-  if (!partiel || 'prix' in entree) r.prix = entier(entree.prix, 'Le prix', 1);
+  if (!partiel || 'prix_achat' in entree) r.prix_achat = entier(entree.prix_achat, "Le prix d'achat", 1);
   if (!partiel || 'devise' in entree) r.devise = verifDevise(entree.devise);
   if (!partiel || 'quantite' in entree) r.quantite = entier(entree.quantite, 'La quantité', 0, 1000000);
   if (!partiel || 'categorie' in entree) r.categorie = verifCategorie(entree.categorie);
@@ -197,7 +205,7 @@ export function ajusterStock(etat, id, delta, opts) {
   return { changes: l.changes, resultat: a };
 }
 
-// Suppression « douce » : l'historique des ventes garde le nom et le prix.
+// Suppression « douce » : l'historique des ventes garde le nom et le coût.
 export function supprimerArticle(etat, id, opts) {
   const a = trouver(articlesActifs(etat), id, 'Article introuvable.');
   a.supprime_le = date(opts);
@@ -227,9 +235,12 @@ function resoudreClient(etat, c, quand) {
 
 /* ---------- Ventes ---------- */
 
+// Le prix d'un article est son PRIX D'ACHAT. Le prix de vente se discute avec le client :
+// le vendeur saisit le montant total convenu (`total`) au moment de valider.
 // entree = {
 //   id?, devise?, taux?,
-//   lignes: [{ article_id, quantite, prix_unitaire? }],   prix_unitaire dans la devise de la vente
+//   lignes: [{ article_id, quantite }],
+//   total: prix de vente convenu, dans la devise de la vente (obligatoire)
 //   paiement: { type: 'payee', encaissements?: [{ devise, montant, mode }] }
 //           | { type: 'credit', client: { id? | nom, telephone? }, acompte?: { devise, montant, mode } }
 // }
@@ -249,19 +260,18 @@ export function creerVente(etat, entree, opts) {
     const a = articlesActifs(etat).find((x) => x.id === lg.article_id);
     if (!a) echec("Un article du panier n'existe plus.");
     const quantite = entier(lg.quantite, 'La quantité', 1, 100000);
-    const prix = lg.prix_unitaire == null
-      ? convertir(a.prix, a.devise, devise, taux)
-      : entier(lg.prix_unitaire, 'Le prix', 0);
     besoin.set(a.id, (besoin.get(a.id) || 0) + quantite);
-    return { a, quantite, prix };
+    // Coût d'achat de la ligne, dans la devise principale, au taux de la vente.
+    return { a, quantite, cout: convertir(a.prix_achat * quantite, a.devise, p.devise_principale, taux) };
   });
   for (const [aid, q] of besoin) {
     const a = etat.articles.find((x) => x.id === aid);
     if (q > a.quantite) echec(`Stock insuffisant pour « ${a.nom} » (il en reste ${a.quantite}).`);
   }
-  const total = lignes.reduce((s, x) => s + x.quantite * x.prix, 0);
-  if (total <= 0) echec('Le total doit être supérieur à zéro.');
+  if (entree.total == null || entree.total === '') echec('Saisis le prix de vente.');
+  const total = entier(entree.total, 'Le prix de vente', 1);
   const total_principal = convertir(total, devise, p.devise_principale, taux);
+  const cout_principal = lignes.reduce((s, x) => s + x.cout, 0);
 
   const pay = entree.paiement || { type: 'payee' };
   let encaissements = [];
@@ -299,20 +309,18 @@ export function creerVente(etat, entree, opts) {
   const l = lot(etat);
   if (nouveauClient) l.inserer('clients', nouveauClient);
   const vente = {
-    id, cree_le: quand, devise, taux, total, total_principal,
+    id, cree_le: quand, devise, taux, total, total_principal, cout_principal,
     statut: pay.type, client_id: client?.id ?? null,
     mode: pay.type === 'payee' ? encaissements[0].mode : acompte?.mode ?? null,
     annule_le: null,
   };
   l.inserer('ventes', vente);
 
-  const principaux = repartir(
-    lignes.map((x) => convertir(x.quantite * x.prix, devise, p.devise_principale, taux)),
-    total_principal,
-  );
+  // Le prix de vente est réparti entre les lignes selon leur coût (pour les ventes par catégorie).
+  const principaux = repartirProportionnel(lignes.map((x) => x.cout || x.quantite), total_principal);
   lignes.forEach((x, i) => l.inserer('lignes_de_vente', {
     id: uuid(), vente_id: id, article_id: x.a.id, nom: x.a.nom, categorie: x.a.categorie,
-    quantite: x.quantite, prix_unitaire: x.prix, montant_principal: principaux[i],
+    quantite: x.quantite, cout_principal: x.cout, montant_principal: principaux[i],
   }));
 
   for (const [aid, q] of besoin) {
@@ -548,17 +556,31 @@ export function soldeCaisse(etat, { jusquA = null, avant = null } = {}) {
 }
 
 // Totaux d'une période (clés de jour incluses), dans la devise principale.
+// Dépenses d'achat de marchandise : le coût des articles vendus est déjà déduit vente par
+// vente, on ne le compte donc pas une deuxième fois dans le bénéfice.
+function depensesMarchandise(etat) {
+  return new Set(etat.depenses.filter((d) => d.type === 'marchandise').map((d) => d.id));
+}
+
+// Totaux d'une période (clés de jour incluses), dans la devise principale.
+//   marge    = ventes − prix d'achat des articles vendus
+//   benefice = marge − dépenses (hors achats de marchandise)
 export function statsPeriode(etat, debut, fin) {
-  const r = { ventes: 0, nbVentes: 0, encaisse: 0, depenses: 0, benefice: 0 };
+  const r = { ventes: 0, nbVentes: 0, cout: 0, marge: 0, encaisse: 0, depenses: 0, depensesExploitation: 0, benefice: 0 };
   for (const v of etat.ventes) {
-    if (actif(v) && dansPeriode(v.cree_le, debut, fin)) { r.ventes += v.total_principal; r.nbVentes++; }
+    if (actif(v) && dansPeriode(v.cree_le, debut, fin)) { r.ventes += v.total_principal; r.cout += v.cout_principal || 0; r.nbVentes++; }
   }
+  const marchandise = depensesMarchandise(etat);
   for (const m of etat.mouvements_caisse) {
     if (!actif(m) || !dansPeriode(m.cree_le, debut, fin)) continue;
     if (m.type === 'entree') r.encaisse += m.montant_principal;
-    else r.depenses += m.montant_principal;
+    else {
+      r.depenses += m.montant_principal;
+      if (!marchandise.has(m.reference_id)) r.depensesExploitation += m.montant_principal;
+    }
   }
-  r.benefice = r.ventes - r.depenses;
+  r.marge = r.ventes - r.cout;
+  r.benefice = r.marge - r.depensesExploitation;
   return r;
 }
 
@@ -758,16 +780,26 @@ export function activiteParJour(etat) {
   const jour = (iso) => {
     const c = cleJour(iso);
     let x = r.get(c);
-    if (!x) { x = { ventes: 0, encaisse: 0, depenses: 0, operations: 0 }; r.set(c, x); }
+    if (!x) { x = { ventes: 0, cout: 0, encaisse: 0, depenses: 0, depensesExploitation: 0, benefice: 0, operations: 0 }; r.set(c, x); }
     return x;
   };
-  for (const v of etat.ventes) { const x = jour(v.cree_le); x.operations++; if (actif(v)) x.ventes += v.total_principal; }
+  const marchandise = depensesMarchandise(etat);
+  for (const v of etat.ventes) {
+    const x = jour(v.cree_le);
+    x.operations++;
+    if (actif(v)) { x.ventes += v.total_principal; x.cout += v.cout_principal || 0; }
+  }
   for (const m of etat.mouvements_caisse) {
     const x = jour(m.cree_le);
     x.operations++;
     if (!actif(m)) continue;
-    if (m.type === 'entree') x.encaisse += m.montant_principal; else x.depenses += m.montant_principal;
+    if (m.type === 'entree') x.encaisse += m.montant_principal;
+    else {
+      x.depenses += m.montant_principal;
+      if (!marchandise.has(m.reference_id)) x.depensesExploitation += m.montant_principal;
+    }
   }
+  for (const x of r.values()) x.benefice = x.ventes - x.cout - x.depensesExploitation;
   return r;
 }
 

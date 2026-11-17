@@ -5,23 +5,24 @@ import * as m from './moteur.js';
 import { aujourdhui, ajouterJours, isoPourJour, maintenantIso } from './temps.js';
 import { convertir } from './money.js';
 
+// [nom, prix d'achat, devise, stock, catégorie]
 const ARTICLES = [
-  ['Robe pagne wax M', 2500, 'USD', 14, 'robes'],
-  ['Robe de soirée satin', 4500, 'USD', 6, 'robes'],
-  ['Jean slim 38', 1800, 'USD', 18, 'pantalons'],
-  ['Pantalon chino beige', 1500, 'USD', 12, 'pantalons'],
-  ['Jupe plissée noire', 1200, 'USD', 10, 'jupes'],
-  ['Chemise blanche homme L', 1400, 'USD', 15, 'chemises'],
-  ['Chemise en lin', 2000, 'USD', 8, 'chemises'],
-  ['T-shirt coton col rond', 15000, 'CDF', 26, 'tshirts'],
-  ['Polo homme', 25000, 'CDF', 16, 'tshirts'],
-  ['Veste en jean', 2800, 'USD', 7, 'vestes'],
-  ['Manteau long femme', 5500, 'USD', 4, 'vestes'],
-  ['Ensemble pagne enfant', 30000, 'CDF', 12, 'enfants'],
-  ['Baskets blanches 40', 3000, 'USD', 9, 'chaussures'],
-  ['Sandales en cuir', 35000, 'CDF', 10, 'chaussures'],
-  ['Sac à main cuir', 3500, 'USD', 6, 'accessoires'],
-  ['Ceinture homme', 10000, 'CDF', 15, 'accessoires'],
+  ['Robe pagne wax M', 1500, 'USD', 14, 'robes'],
+  ['Robe de soirée satin', 2800, 'USD', 6, 'robes'],
+  ['Jean slim 38', 1100, 'USD', 18, 'pantalons'],
+  ['Pantalon chino beige', 900, 'USD', 12, 'pantalons'],
+  ['Jupe plissée noire', 700, 'USD', 10, 'jupes'],
+  ['Chemise blanche homme L', 800, 'USD', 15, 'chemises'],
+  ['Chemise en lin', 1200, 'USD', 8, 'chemises'],
+  ['T-shirt coton col rond', 9000, 'CDF', 26, 'tshirts'],
+  ['Polo homme', 15000, 'CDF', 16, 'tshirts'],
+  ['Veste en jean', 1700, 'USD', 7, 'vestes'],
+  ['Manteau long femme', 3500, 'USD', 4, 'vestes'],
+  ['Ensemble pagne enfant', 18000, 'CDF', 12, 'enfants'],
+  ['Baskets blanches 40', 1900, 'USD', 9, 'chaussures'],
+  ['Sandales en cuir', 21000, 'CDF', 10, 'chaussures'],
+  ['Sac à main cuir', 2200, 'USD', 6, 'accessoires'],
+  ['Ceinture homme', 6000, 'CDF', 15, 'accessoires'],
 ];
 
 const CLIENTS = [
@@ -62,8 +63,8 @@ export function genererExemples(etat) {
   const debut = ajouterJours(fin, -29);
   const quandDebut = { date: isoPourJour(debut, 8, 0) };
 
-  const articles = ARTICLES.map(([nom, prix, devise, quantite, categorie]) =>
-    faire(m.ajouterArticle(etat, { nom, prix, devise, quantite: quantite * 2, categorie }, quandDebut)));
+  const articles = ARTICLES.map(([nom, prix_achat, devise, quantite, categorie]) =>
+    faire(m.ajouterArticle(etat, { nom, prix_achat, devise, quantite: quantite * 2, categorie }, quandDebut)));
 
   const dettesOuvertes = [];
   for (let i = 0; i < 30; i++) {
@@ -82,26 +83,33 @@ export function genererExemples(etat) {
       const quand = { date: isoPourJour(jour, entre(9, 18), entre(0, 59)) };
       if (!passe(quand)) continue;
       const mode = hasard() < 0.7 ? 'cash' : choisir(['mpesa', 'mpesa', 'airtel', 'orange']);
-      const totalEn = (devise) => lignes.reduce((s, l) => {
-        const a = articles.find((x) => x.id === l.article_id);
-        return s + convertir(a.prix, a.devise, devise, taux);
-      }, 0);
+      // Prix de vente discuté : entre 1,25 et 1,7 fois le prix d'achat, arrondi (1 $ ou 500 FC).
+      const marge = 1.25 + hasard() * 0.45;
+      const totalEn = (devise) => {
+        const cout = lignes.reduce((s, l) => {
+          const a = articles.find((x) => x.id === l.article_id);
+          return s + convertir(a.prix_achat, a.devise, devise, taux);
+        }, 0);
+        const pas = devise === 'USD' ? 100 : 500;
+        return Math.max(pas, Math.round((cout * marge) / pas) * pas);
+      };
       if (hasard() < 0.15) {
         const [nom, telephone] = choisir(CLIENTS);
         const acompte = hasard() < 0.5
           ? { devise: p.devise_principale, montant: Math.floor(totalEn(p.devise_principale) / 3), mode: 'cash' }
           : null;
         const v = faire(m.creerVente(etat, {
-          devise: p.devise_principale, taux, lignes,
+          devise: p.devise_principale, taux, lignes, total: totalEn(p.devise_principale),
           paiement: { type: 'credit', client: { nom, telephone }, acompte: acompte?.montant ? acompte : null },
         }, quand));
         dettesOuvertes.push({ client_id: v.client_id, jour: i });
       } else {
         // Un tiers des clients paient en francs, même pour les articles affichés en dollars.
         const devise = hasard() < 0.33 ? 'CDF' : 'USD';
+        const prix = totalEn(devise);
         faire(m.creerVente(etat, {
-          devise, taux, lignes,
-          paiement: { type: 'payee', encaissements: [{ devise, montant: totalEn(devise), mode }] },
+          devise, taux, lignes, total: prix,
+          paiement: { type: 'payee', encaissements: [{ devise, montant: prix, mode }] },
         }, quand));
       }
     }

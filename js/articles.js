@@ -1,4 +1,4 @@
-// Écran ARTICLES : liste avec stock coloré, ajout rapide (nom, prix, quantité, catégorie facultative),
+// Écran ARTICLES : liste avec stock coloré, ajout rapide (nom, prix d'achat, quantité, catégorie facultative),
 // nouvel arrivage, modification et suppression.
 
 import * as api from './api.js';
@@ -33,7 +33,7 @@ export async function afficher(racine) {
   if (!articles.length) {
     racine.append(etatVide({
       icone: 'articles', titre: 'Ton stock est vide',
-      texte: 'Un article, c’est juste un nom, un prix et une quantité. Par exemple « Robe rouge M ».',
+      texte: 'Un article, c’est juste un nom, un prix d’achat et une quantité. Le prix de vente se discute à chaque vente.',
       action: { libelle: 'Ajouter un article', icone: 'plus', onclick: () => ouvrirFormulaireArticle(p) },
     }));
     return;
@@ -65,7 +65,7 @@ export async function afficher(racine) {
       pastille(a.categorie, a.nom, 40),
       h('span', { class: 'liste-ligne-corps' },
         h('span', { class: 'liste-ligne-titre' }, a.nom),
-        h('span', { class: 'liste-ligne-sous num' }, formater(a.prix, a.devise))),
+        h('span', { class: 'liste-ligne-sous num' }, `Achat : ${formater(a.prix_achat, a.devise)}`)),
       h('span', { class: 'liste-ligne-fin' }, badgeStock(a, p.seuil_stock_bas)),
       icone('droite', 20, 'chevron'))));
   }
@@ -77,7 +77,7 @@ export async function afficher(racine) {
 function formulaire(p, article, { onValider, libelleBouton }) {
   let categorie = article ? article.categorie : derniers.categorie;
   const nom = saisie({ value: article?.nom ?? '', placeholder: 'Ex. Robe pagne wax M', maxlength: 80, 'aria-label': "Nom de l'article", enterkeyhint: 'next' });
-  const prix = champMontant({ devise: article?.devise ?? derniers.devise ?? p.devise_principale, valeur: article?.prix ?? null, libelle: 'Prix de vente' });
+  const prix = champMontant({ devise: article?.devise ?? derniers.devise ?? p.devise_principale, valeur: article?.prix_achat ?? null, libelle: 'Prix d’achat (une pièce)', aide: 'Le prix de vente sera discuté avec le client au moment de la vente.' });
   const quantite = article ? null : saisie({ inputmode: 'numeric', value: '1', 'aria-label': 'Quantité en stock', enterkeyhint: 'done' });
   const bouton = h('button', { class: 'btn btn-principal btn-bloc btn-grand', type: 'submit' }, libelleBouton);
 
@@ -98,8 +98,8 @@ function formulaire(p, article, { onValider, libelleBouton }) {
       try {
         if (!nom.value.trim()) { nom.classList.add('invalide'); nom.focus(); throw new api.ErreurMetier("Saisis le nom de l'article."); }
         const valeurPrix = prix.lire();
-        if (!valeurPrix) { prix.signalerErreur(); throw new api.ErreurMetier('Saisis un prix valide.'); }
-        const champs = { nom: nom.value, prix: valeurPrix, devise: prix.devise(), categorie };
+        if (!valeurPrix) { prix.signalerErreur(); throw new api.ErreurMetier('Saisis un prix d’achat valide.'); }
+        const champs = { nom: nom.value, prix_achat: valeurPrix, devise: prix.devise(), categorie };
         if (quantite) {
           const q = lireEntier(quantite.value);
           if (q == null) { quantite.classList.add('invalide'); quantite.focus(); throw new api.ErreurMetier('Saisis une quantité valide.'); }
@@ -126,7 +126,7 @@ export function ouvrirFormulaireArticle(p) {
         f.remplacer(h('div', { class: 'pile', style: 'text-align:center;align-items:center' },
           h('span', { class: 'cachet-ok' }, icone('coche', 30)),
           h('p', { class: 'sous-titre' }, a.nom),
-          h('p', { class: 'texte-2' }, `${formater(a.prix, a.devise)} · ${a.quantite} en stock`),
+          h('p', { class: 'texte-2' }, `Achat : ${formater(a.prix_achat, a.devise)} · ${a.quantite} en stock`),
           h('button', { class: 'btn btn-principal btn-bloc btn-grand', onclick: () => { f.titre('Nouvel article'); nouveau(); } }, icone('plus', 22), 'Ajouter un autre'),
           h('button', { class: 'btn btn-secondaire btn-bloc', onclick: () => f.fermer() }, 'Terminer')));
       },

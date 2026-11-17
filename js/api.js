@@ -181,13 +181,15 @@ function enClair(unites, devise) {
 
 function exporter(e, table) {
   const nomClient = (id) => e.clients.find((c) => c.id === id)?.nom || '';
+  const dp = e.profil.devise_principale;
   const L = {
-    articles: [['nom', 'prix', 'devise', 'stock', 'categorie'],
-      ...m.articlesActifs(e).map((a) => [a.nom, enClair(a.prix, a.devise), a.devise, a.quantite, a.categorie || ''])],
-    ventes: [['date', 'vente', 'statut', 'client', 'article', 'quantite', 'prix_unitaire', 'devise', 'taux', 'annulee'],
+    articles: [['nom', 'prix_achat', 'devise', 'stock', 'categorie'],
+      ...m.articlesActifs(e).map((a) => [a.nom, enClair(a.prix_achat, a.devise), a.devise, a.quantite, a.categorie || ''])],
+    ventes: [['date', 'vente', 'statut', 'client', 'article', 'quantite', `cout_achat_${dp}`, `prix_vente_${dp}`, `benefice_${dp}`, 'taux', 'annulee'],
       ...e.lignes_de_vente.map((l) => {
         const v = e.ventes.find((x) => x.id === l.vente_id);
-        return [v.cree_le, v.id, v.statut, nomClient(v.client_id), l.nom, l.quantite, enClair(l.prix_unitaire, v.devise), v.devise, v.taux, v.annule_le || ''];
+        return [v.cree_le, v.id, v.statut, nomClient(v.client_id), l.nom, l.quantite, enClair(l.cout_principal, dp),
+          enClair(l.montant_principal, dp), enClair(l.montant_principal - l.cout_principal, dp), v.taux, v.annule_le || ''];
       })],
     dettes: [['date', 'client', 'montant_vente', 'acompte', 'du', 'reste', 'devise', 'annulee'],
       ...e.dettes.map((d) => [d.cree_le, nomClient(d.client_id), enClair(d.montant_vente, d.devise), enClair(d.acompte, d.devise),

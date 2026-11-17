@@ -18,12 +18,13 @@ Pensée d'abord pour l'iPhone (Safari), compatible Android et ordinateur.
 
 ## Ce que fait l'étape 1
 
-- **Vendre** : grille d'articles, panier (prix modifiable, quantité), vente en **dollars ou en francs**,
-  taux du jour fixé par le vendeur (modifiable pour une seule vente), paiement **Cash, M-Pesa, Airtel Money,
-  Orange Money**, reçu en $ / FC / les deux mélangés, **vente à crédit avec acompte**, reçu à partager
-  sur WhatsApp, annulation, historique des ventes.
-- **Articles** : nom + prix + quantité (catégorie facultative), « Ajouter un autre », nouvel arrivage,
-  modification, suppression. Stock jamais négatif.
+- **Vendre** : grille d'articles avec leur **prix d'achat**, panier (bouton − sur la carte). À la validation,
+  le vendeur **saisit lui-même le prix de vente** discuté avec le client, en **dollars, en francs ou les deux**
+  ; le bénéfice de la vente s'affiche, avec alerte et confirmation si on vend à perte. Paiement **Cash,
+  M-Pesa, Airtel Money, Orange Money**, **vente à crédit avec acompte**, reçu WhatsApp (qui ne montre
+  jamais le prix d'achat), annulation, historique des ventes. Taux du jour fixé par le vendeur.
+- **Articles** : nom + prix d'achat + quantité (catégorie facultative), « Ajouter un autre », nouvel
+  arrivage, modification, suppression. Stock jamais négatif.
 - **Dettes** : total à recevoir, fiche client (total dû / déjà payé / reste), paiement partiel,
   remboursement possible dans l'autre devise, la plus ancienne dette réglée en premier, annulation.
 - **Dépenses** : montant + type en gros boutons, modification, annulation.
@@ -40,7 +41,9 @@ tant que l'étape 2 (comptes + serveur) n'est pas faite.
 - Montants stockés en **nombres entiers** : centimes pour le dollar, francs pour le franc. Aucun calcul en
   virgule flottante. Taux = nombre entier de FC pour 1 $.
 - Chaque opération enregistre **son taux** : changer le taux ne modifie jamais le passé.
-- Chaque ligne de vente garde le **nom et le prix au moment de la vente**.
+- Chaque ligne de vente garde le **nom et le coût d'achat au moment de la vente**.
+- **Bénéfice = ventes − prix d'achat des articles vendus − dépenses.** Les dépenses « Achat de
+  marchandise » sortent de la caisse mais ne sont pas retirées du bénéfice une deuxième fois.
 - Rien n'est supprimé : ventes, paiements et dépenses sont **annulés** (date et heure gardées).
 - Chaque opération est vérifiée entièrement avant d'être appliquée, puis enregistrée en **une seule
   transaction** : tout réussit ou rien ne change.
@@ -83,7 +86,7 @@ complet demandent HTTPS : utilise plutôt le lien Netlify ci-dessous.
 
 ## Tests
 
-- **Moteur** (24 tests : montants, conversions, ventes, stock, dettes, acomptes, caisse, rapports) :
+- **Moteur** (27 tests : montants, conversions, prix négocié, bénéfice, stock, dettes, acomptes, caisse, rapports) :
   lancer le serveur local puis ouvrir http://localhost:8000/tests/ — le titre doit afficher « OK ».
 - Les parcours au toucher et les captures d'écran (375, 390, 430 px, clair et sombre) ont été vérifiés
   avec Playwright sur Edge.

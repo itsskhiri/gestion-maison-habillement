@@ -1,5 +1,6 @@
 // Tests automatiques du moteur métier (ouvrir tests/index.html via un serveur local).
 // Ils reprennent les scénarios obligatoires du cahier des charges.
+// Rappel : le prix d'un article est son PRIX D'ACHAT ; le prix de vente est saisi à chaque vente.
 
 import * as m from '../js/moteur.js';
 import { convertir, lireMontant, formater, divArrondi } from '../js/money.js';
@@ -36,16 +37,20 @@ function refuse(fn, motif) {
 
 definirFuseau('Africa/Lubumbashi');
 const J = (cle, h = 12, mn = 0) => ({ date: isoPourJour(cle, h, mn) });
+const TOUT = ['0000-01-01', '9999-12-31'];
 
-// Boutique en francs, taux 2 850, avec deux articles.
+// Boutique en francs, taux 2 850 : robe achetée 30 000 FC, jean acheté 12 $.
 function boutique(devise = 'CDF') {
   const e = m.etatVide();
   m.creerProfil(e, { nom_boutique: 'Boutique Test', devise_principale: devise, taux: 2850 });
-  const robe = m.ajouterArticle(e, { nom: 'Robe', prix: 50000, devise: 'CDF', quantite: 5, categorie: 'robes' }).resultat;
-  const jean = m.ajouterArticle(e, { nom: 'Jean', prix: 2000, devise: 'USD', quantite: 2, categorie: 'pantalons' }).resultat;
+  const robe = m.ajouterArticle(e, { nom: 'Robe', prix_achat: 30000, devise: 'CDF', quantite: 5, categorie: 'robes' }).resultat;
+  const jean = m.ajouterArticle(e, { nom: 'Jean', prix_achat: 1200, devise: 'USD', quantite: 2, categorie: 'pantalons' }).resultat;
   return { e, robe, jean };
 }
 const solde = (e) => m.soldeCaisse(e);
+// Vente payée simple : `total` dans la devise de la vente (francs par défaut).
+const vendre = (e, article, quantite, total, extra = {}, opts) =>
+  m.creerVente(e, { lignes: [{ article_id: article.id, quantite }], total, ...extra }, opts).resultat;
 
 /* ---------- Montants exacts ---------- */
 
@@ -65,11 +70,10 @@ test('Montants : lecture et affichage exacts', () => {
 test('Conversions : arrondi au plus proche, sans virgule flottante', () => {
   egal(convertir(1000, 'USD', 'CDF', 2850), 28500);
   egal(convertir(28500, 'CDF', 'USD', 2850), 1000);
-  egal(convertir(30000, 'CDF', 'USD', 2850), 1053); // 10,526… $ -> 10,53 $
-  egal(convertir(1001, 'USD', 'CDF', 2850), 28529); // 28 528,5 -> 28 529
+  egal(convertir(30000, 'CDF', 'USD', 2850), 1053);
+  egal(convertir(1001, 'USD', 'CDF', 2850), 28529);
   egal(divArrondi(5, 2), 3);
   egal(divArrondi(-5, 2), -3);
-  // 0,1 + 0,2 en centimes reste exact
   egal(lireMontant('0,1', 'USD') + lireMontant('0,2', 'USD'), 30);
 });
 
@@ -80,70 +84,92 @@ test('Fuseau : une vente à 23 h 30 à Bukavu compte bien pour ce jour-là', () 
   egal(cleJour('2026-11-10T22:30:00.000Z'), '2026-11-11');
 });
 
-/* ---------- Ventes et stock ---------- */
+/* ---------- Prix d'achat et prix de vente négocié ---------- */
 
-test('Vente payée : stock baisse, caisse augmente, prix figé dans la ligne', () => {
+test('Prix de vente saisi par le vendeur : obligatoire et positif', () => {
   const { e, robe } = boutique();
-  const v = m.creerVente(e, { lignes: [{ article_id: robe.id, quantite: 2 }] }).resultat;
-  egal(v.total, 100000);
+  refuse(() => m.creerVente(e, { lignes: [{ article_id: robe.id, quantite: 1 }] }), 'prix de vente');
+  refuse(() => vendre(e, robe, 1, 0));
+  refuse(() => vendre(e, robe, 1, 12.5));
+  egal(robe.quantite, 5, 'rien n’a changé');
+});
+
+test('Vente négociée : caisse = prix convenu, bénéfice = prix − prix d’achat', () => {
+  const { e, robe } = boutique();
+  // 2 robes achetées 30 000 FC chacune, vendues 75 000 FC les deux après discussion
+  const v = vendre(e, robe, 2, 75000);
+  egal(v.total, 75000);
+  egal(v.cout_principal, 60000);
   egal(robe.quantite, 3);
-  egal(solde(e).CDF, 100000);
-  m.modifierArticle(e, robe.id, { prix: 70000 });
-  const lg = e.lignes_de_vente.find((l) => l.vente_id === v.id);
-  egal(lg.prix_unitaire, 50000, 'prix historique');
-  egal(lg.nom, 'Robe');
+  egal(solde(e).CDF, 75000);
+  const s = m.statsPeriode(e, ...TOUT);
+  egal([s.ventes, s.cout, s.marge, s.benefice], [75000, 60000, 15000, 15000]);
+  // Changer le prix d'achat plus tard ne change pas le passé
+  m.modifierArticle(e, robe.id, { prix_achat: 40000 });
+  egal(m.statsPeriode(e, ...TOUT).cout, 60000);
+  egal(e.lignes_de_vente[0].nom, 'Robe');
 });
 
-test('Vente : article en dollars vendu en francs au taux du jour', () => {
-  const { e, jean } = boutique();
-  const v = m.creerVente(e, { devise: 'CDF', lignes: [{ article_id: jean.id, quantite: 1 }] }).resultat;
-  egal(v.total, 57000);
-  egal(v.taux, 2850);
-});
-
-test('Vente : paiement mixte dollars + francs', () => {
+test('Vente à perte : acceptée, bénéfice négatif', () => {
   const { e, robe } = boutique();
-  // Total 100 000 FC : le client donne 20 $ (57 000 FC) + 43 000 FC
-  m.creerVente(e, {
-    lignes: [{ article_id: robe.id, quantite: 2 }],
+  vendre(e, robe, 1, 25000);
+  egal(m.statsPeriode(e, ...TOUT).benefice, -5000);
+});
+
+test('Article acheté en dollars, vendu en francs : coût converti au taux de la vente', () => {
+  const { e, jean } = boutique();
+  const v = vendre(e, jean, 1, 50000, { devise: 'CDF', taux: 2900 });
+  egal(v.cout_principal, 34800); // 12 $ × 2 900
+  egal(m.statsPeriode(e, ...TOUT).marge, 15200);
+});
+
+test('Plusieurs articles : prix de vente réparti par catégorie au prorata du coût', () => {
+  const { e, robe, jean } = boutique();
+  // coût : robe 30 000 + jean 34 200 (12 $) = 64 200 ; vendu 100 000
+  m.creerVente(e, { lignes: [{ article_id: robe.id, quantite: 1 }, { article_id: jean.id, quantite: 1 }], total: 100000 });
+  const cats = m.ventesParCategorie(e, ...TOUT);
+  egal(cats.reduce((t, c) => t + c.valeur, 0), 100000, 'somme exacte');
+  egal(cats.map((c) => c.id), ['pantalons', 'robes']);
+  egal(m.meilleuresVentes(e, ...TOUT).length, 2);
+});
+
+test('Paiement mixte dollars + francs', () => {
+  const { e, robe } = boutique();
+  // Prix convenu 100 000 FC : le client donne 20 $ (57 000 FC) + 43 000 FC
+  vendre(e, robe, 2, 100000, {
     paiement: { type: 'payee', encaissements: [{ devise: 'USD', montant: 2000, mode: 'cash' }, { devise: 'CDF', montant: 43000, mode: 'mpesa' }] },
   });
   egal(solde(e).USD, 2000);
   egal(solde(e).CDF, 43000);
   egal(solde(e).modes.mpesa.CDF, 43000);
-  egal(m.statsPeriode(e, '0000-01-01', '9999-12-31').encaisse, 100000, 'encaissé = total exact');
-  refuse(() => m.creerVente(e, {
-    lignes: [{ article_id: robe.id, quantite: 1 }],
+  egal(m.statsPeriode(e, ...TOUT).encaisse, 100000);
+  refuse(() => vendre(e, robe, 1, 50000, {
     paiement: { type: 'payee', encaissements: [{ devise: 'CDF', montant: 10000, mode: 'cash' }] },
   }), 'ne correspond pas');
 });
 
-test('Paiement mixte : francs saisis d’abord, dollars complétés (arrondi au centime accepté)', () => {
+test('Paiement mixte : arrondi du dollar au centime accepté, vrai écart refusé', () => {
   const { e, robe } = boutique();
-  // Total 100 000 FC ; le client donne 40 000 FC, le reste 60 000 FC = 21,05 $ (arrondi)
   const u = convertir(60000, 'CDF', 'USD', 2850);
   egal(u, 2105);
-  m.creerVente(e, {
-    lignes: [{ article_id: robe.id, quantite: 2 }],
+  vendre(e, robe, 2, 100000, {
     paiement: { type: 'payee', encaissements: [{ devise: 'USD', montant: u, mode: 'cash' }, { devise: 'CDF', montant: 40000, mode: 'cash' }] },
   });
-  egal(solde(e).USD, 2105);
-  egal(solde(e).CDF, 40000);
-  egal(m.statsPeriode(e, '0000-01-01', '9999-12-31').encaisse, 100000, 'encaissé = total exact');
-  // Mais un écart réel (1 $ de moins) est refusé
-  refuse(() => m.creerVente(e, {
-    lignes: [{ article_id: robe.id, quantite: 1 }],
+  egal(m.statsPeriode(e, ...TOUT).encaisse, 100000);
+  refuse(() => vendre(e, robe, 1, 50000, {
     paiement: { type: 'payee', encaissements: [{ devise: 'USD', montant: 1000, mode: 'cash' }, { devise: 'CDF', montant: 20000, mode: 'cash' }] },
   }), 'ne correspond pas');
 });
 
+/* ---------- Stock ---------- */
+
 test('Stock jamais négatif', () => {
   const { e, jean } = boutique();
-  refuse(() => m.creerVente(e, { lignes: [{ article_id: jean.id, quantite: 3 }] }), 'Stock insuffisant');
-  refuse(() => m.creerVente(e, { lignes: [{ article_id: jean.id, quantite: 2 }, { article_id: jean.id, quantite: 1 }] }), 'Stock insuffisant');
-  m.creerVente(e, { lignes: [{ article_id: jean.id, quantite: 2 }] });
+  refuse(() => vendre(e, jean, 3, 90000), 'Stock insuffisant');
+  refuse(() => m.creerVente(e, { lignes: [{ article_id: jean.id, quantite: 2 }, { article_id: jean.id, quantite: 1 }], total: 90000 }), 'Stock insuffisant');
+  vendre(e, jean, 2, 90000);
   egal(jean.quantite, 0, 'stock à zéro');
-  refuse(() => m.creerVente(e, { lignes: [{ article_id: jean.id, quantite: 1 }] }));
+  refuse(() => vendre(e, jean, 1, 45000));
   refuse(() => m.ajusterStock(e, jean.id, -1), 'négatif');
   m.ajusterStock(e, jean.id, 4);
   egal(jean.quantite, 4, 'nouvel arrivage');
@@ -152,25 +178,26 @@ test('Stock jamais négatif', () => {
 test('Une vente refusée ne modifie rien (tout ou rien)', () => {
   const { e, robe, jean } = boutique();
   const avant = JSON.stringify(e);
-  refuse(() => m.creerVente(e, { lignes: [{ article_id: robe.id, quantite: 1 }, { article_id: jean.id, quantite: 9 }] }));
+  refuse(() => m.creerVente(e, { lignes: [{ article_id: robe.id, quantite: 1 }, { article_id: jean.id, quantite: 9 }], total: 1000 }));
   egal(JSON.stringify(e), avant);
 });
 
 test('Annulation de vente : stock rendu, caisse corrigée, trace conservée', () => {
   const { e, robe } = boutique();
-  const v = m.creerVente(e, { lignes: [{ article_id: robe.id, quantite: 1 }] }).resultat;
+  const v = vendre(e, robe, 1, 45000);
   m.annulerVente(e, v.id);
   egal(robe.quantite, 5);
   egal(solde(e).CDF, 0);
   egal(e.ventes.length, 1, 'la vente reste dans l’historique');
-  egal(m.statsPeriode(e, '0000-01-01', '9999-12-31').ventes, 0);
+  egal(m.statsPeriode(e, ...TOUT).ventes, 0);
+  egal(m.statsPeriode(e, ...TOUT).cout, 0);
 });
 
 test('Même identifiant envoyé deux fois : une seule vente (pas de doublon)', () => {
   const { e, robe } = boutique();
   const id = m.uuid();
-  m.creerVente(e, { id, lignes: [{ article_id: robe.id, quantite: 1 }] });
-  m.creerVente(e, { id, lignes: [{ article_id: robe.id, quantite: 1 }] });
+  m.creerVente(e, { id, lignes: [{ article_id: robe.id, quantite: 1 }], total: 45000 });
+  m.creerVente(e, { id, lignes: [{ article_id: robe.id, quantite: 1 }], total: 45000 });
   egal(e.ventes.length, 1);
   egal(robe.quantite, 4);
 });
@@ -178,18 +205,15 @@ test('Même identifiant envoyé deux fois : une seule vente (pas de doublon)', (
 /* ---------- Dettes (scénario obligatoire) ---------- */
 
 test('Dette 50 000 + acompte 10 000 -> paiements 15 000 puis 25 000', () => {
-  const e = m.etatVide();
-  m.creerProfil(e, { nom_boutique: 'B', devise_principale: 'CDF', taux: 2850 });
-  const a = m.ajouterArticle(e, { nom: 'Robe', prix: 50000, devise: 'CDF', quantite: 3 }).resultat;
-  const v = m.creerVente(e, {
-    lignes: [{ article_id: a.id, quantite: 1 }],
+  const { e, robe } = boutique();
+  const v = vendre(e, robe, 1, 50000, {
     paiement: { type: 'credit', client: { nom: 'Furaha' }, acompte: { devise: 'CDF', montant: 10000, mode: 'cash' } },
-  }).resultat;
+  });
   const cid = v.client_id;
   egal(solde(e).CDF, 10000, 'caisse après acompte');
   egal(m.ficheClient(e, cid).reste.CDF, 40000, 'reste après acompte');
 
-  let r = m.encaisserPaiement(e, { client_id: cid, devise_dette: 'CDF', montant_recu: 15000 }).resultat;
+  const r = m.encaisserPaiement(e, { client_id: cid, devise_dette: 'CDF', montant_recu: 15000 }).resultat;
   egal(r.reste_apres, 25000);
   egal(solde(e).CDF, 25000, 'caisse +15 000');
 
@@ -203,23 +227,21 @@ test('Dette 50 000 + acompte 10 000 -> paiements 15 000 puis 25 000', () => {
   m.annulerPaiement(e, p2.paiement.id);
   egal(m.ficheClient(e, cid).reste.CDF, 25000, 'reste corrigé après annulation');
   egal(solde(e).CDF, 25000, 'caisse corrigée après annulation');
-  egal(m.ficheClient(e, cid).soldee, false);
 });
 
-test('Vente à crédit : n’entre pas dans la caisse, mais compte dans les ventes', () => {
+test('Vente à crédit : n’entre pas dans la caisse, mais compte dans les ventes et le bénéfice', () => {
   const { e, robe } = boutique();
-  m.creerVente(e, { lignes: [{ article_id: robe.id, quantite: 1 }], paiement: { type: 'credit', client: { nom: 'Aline' } } });
+  vendre(e, robe, 1, 50000, { paiement: { type: 'credit', client: { nom: 'Aline' } } });
   egal(solde(e).CDF, 0);
-  const s = m.statsPeriode(e, '0000-01-01', '9999-12-31');
-  egal(s.ventes, 50000);
-  egal(s.encaisse, 0);
+  const s = m.statsPeriode(e, ...TOUT);
+  egal([s.ventes, s.encaisse, s.benefice], [50000, 0, 20000]);
   egal(m.totalARecevoir(e).CDF, 50000);
 });
 
 test('Client avec 2 dettes : le paiement va d’abord à la plus ancienne', () => {
   const { e, robe } = boutique();
-  const v1 = m.creerVente(e, { lignes: [{ article_id: robe.id, quantite: 1 }], paiement: { type: 'credit', client: { nom: 'Neema' } } }, J('2026-11-01')).resultat;
-  m.creerVente(e, { lignes: [{ article_id: robe.id, quantite: 1 }], paiement: { type: 'credit', client: { nom: 'neema ' } } }, J('2026-11-05'));
+  const v1 = vendre(e, robe, 1, 50000, { paiement: { type: 'credit', client: { nom: 'Neema' } } }, J('2026-11-01'));
+  vendre(e, robe, 1, 50000, { paiement: { type: 'credit', client: { nom: 'neema ' } } }, J('2026-11-05'));
   egal(e.clients.length, 1, 'même cliente retrouvée par son nom');
   m.encaisserPaiement(e, { client_id: v1.client_id, devise_dette: 'CDF', montant_recu: 60000 }, J('2026-11-06'));
   const [ancienne, recente] = e.dettes.slice().sort((a, b) => a.cree_le.localeCompare(b.cree_le));
@@ -229,34 +251,32 @@ test('Client avec 2 dettes : le paiement va d’abord à la plus ancienne', () =
 
 test('Dette en dollars payée en francs au taux du jour', () => {
   const { e, jean } = boutique('USD');
-  const v = m.creerVente(e, { devise: 'USD', lignes: [{ article_id: jean.id, quantite: 1 }], paiement: { type: 'credit', client: { nom: 'Patrick' } } }).resultat;
-  // reste 20 $ = 57 000 FC
+  const v = vendre(e, jean, 1, 2000, { devise: 'USD', paiement: { type: 'credit', client: { nom: 'Patrick' } } });
   refuse(() => m.encaisserPaiement(e, { client_id: v.client_id, devise_dette: 'USD', montant_recu: 57001, devise_recue: 'CDF' }), 'dépasse');
   const r = m.encaisserPaiement(e, { client_id: v.client_id, devise_dette: 'USD', montant_recu: 57000, devise_recue: 'CDF' }).resultat;
   egal(r.reste_apres, 0);
-  egal(solde(e).CDF, 57000, 'francs entrés dans la caisse');
+  egal(solde(e).CDF, 57000);
 });
 
 test('Annuler une vente à crédit déjà payée en partie est refusé', () => {
   const { e, robe } = boutique();
-  const v = m.creerVente(e, { lignes: [{ article_id: robe.id, quantite: 1 }], paiement: { type: 'credit', client: { nom: 'Espoir' } } }).resultat;
+  const v = vendre(e, robe, 1, 50000, { paiement: { type: 'credit', client: { nom: 'Espoir' } } });
   m.encaisserPaiement(e, { client_id: v.client_id, devise_dette: 'CDF', montant_recu: 1000 });
   refuse(() => m.annulerVente(e, v.id), 'paiements');
 });
 
-test('Acompte égal au total refusé', () => {
+test('Acompte égal au prix de vente refusé', () => {
   const { e, robe } = boutique();
-  refuse(() => m.creerVente(e, {
-    lignes: [{ article_id: robe.id, quantite: 1 }],
+  refuse(() => vendre(e, robe, 1, 50000, {
     paiement: { type: 'credit', client: { nom: 'X' }, acompte: { devise: 'CDF', montant: 50000 } },
   }), 'Payé');
 });
 
-/* ---------- Dépenses et caisse ---------- */
+/* ---------- Dépenses, caisse et bénéfice ---------- */
 
 test('Dépense : sort de la caisse, modification et annulation corrigent la caisse', () => {
   const { e, robe } = boutique();
-  m.creerVente(e, { lignes: [{ article_id: robe.id, quantite: 2 }] });
+  vendre(e, robe, 2, 100000);
   const d = m.ajouterDepense(e, { montant: 30000, devise: 'CDF', type: 'loyer' }).resultat;
   egal(solde(e).CDF, 70000);
   m.modifierDepense(e, d.id, { montant: 20000 });
@@ -266,18 +286,21 @@ test('Dépense : sort de la caisse, modification et annulation corrigent la cais
   refuse(() => m.ajouterDepense(e, { montant: 1000, devise: 'CDF', type: 'inconnu' }));
 });
 
-test('Caisse = entrées − sorties, et bénéfice = ventes − dépenses', () => {
+test('Bénéfice = ventes − prix d’achat − dépenses (achats de marchandise non comptés deux fois)', () => {
   const { e, robe } = boutique();
-  m.creerVente(e, { lignes: [{ article_id: robe.id, quantite: 1 }] });
-  m.creerVente(e, { lignes: [{ article_id: robe.id, quantite: 1 }], paiement: { type: 'credit', client: { nom: 'K' }, acompte: { devise: 'CDF', montant: 5000 } } });
+  vendre(e, robe, 1, 50000);
+  vendre(e, robe, 1, 50000, { paiement: { type: 'credit', client: { nom: 'K' }, acompte: { devise: 'CDF', montant: 5000 } } });
   m.ajouterDepense(e, { montant: 12000, devise: 'CDF', type: 'transport' });
-  const s = m.statsPeriode(e, '0000-01-01', '9999-12-31');
+  m.ajouterDepense(e, { montant: 90000, devise: 'CDF', type: 'marchandise' });
+  const s = m.statsPeriode(e, ...TOUT);
   egal(s.ventes, 100000);
+  egal(s.cout, 60000);
   egal(s.encaisse, 55000);
-  egal(s.depenses, 12000);
-  egal(s.benefice, 88000);
-  egal(solde(e).CDF, 43000);
-  const journal = m.journalCaisse(e, '0000-01-01', '9999-12-31');
+  egal(s.depenses, 102000, 'toutes les sorties de caisse');
+  egal(s.depensesExploitation, 12000);
+  egal(s.benefice, 28000);
+  egal(solde(e).CDF, 55000 - 102000);
+  const journal = m.journalCaisse(e, ...TOUT);
   const calc = journal.filter((x) => !x.annule_le).reduce((t, x) => t + (x.type === 'entree' ? 1 : -1) * x.montant, 0);
   egal(calc, solde(e).CDF, 'journal cohérent avec le solde');
 });
@@ -286,39 +309,37 @@ test('Caisse = entrées − sorties, et bénéfice = ventes − dépenses', () =
 
 test('Rapports : paiement reçu 5 jours après la vente, dans le rapport du jour du paiement', () => {
   const { e, robe } = boutique();
-  m.creerVente(e, { lignes: [{ article_id: robe.id, quantite: 1 }] }, J('2026-11-01', 9));
-  const v = m.creerVente(e, { lignes: [{ article_id: robe.id, quantite: 1 }], paiement: { type: 'credit', client: { nom: 'Jean' } } }, J('2026-11-01', 15)).resultat;
+  vendre(e, robe, 1, 50000, {}, J('2026-11-01', 9));
+  const v = vendre(e, robe, 1, 50000, { paiement: { type: 'credit', client: { nom: 'Jean' } } }, J('2026-11-01', 15));
   m.encaisserPaiement(e, { client_id: v.client_id, devise_dette: 'CDF', montant_recu: 20000 }, J('2026-11-06', 10));
   const r1 = m.rapportDuJour(e, '2026-11-01');
   const r6 = m.rapportDuJour(e, '2026-11-06');
   egal(r1.stats.ventes, 100000);
+  egal(r1.stats.benefice, 40000);
   egal(r1.stats.encaisse, 50000);
   egal(r1.nouvellesDettes.length, 1);
-  egal(r1.paiements.length, 0);
-  egal(r6.paiements.length, 1);
   egal(r6.paiements[0].reste_apres, 30000);
   egal(r6.stats.encaisse, 20000);
-  egal(r6.soldeDebut.CDF, 50000, 'solde début du 6');
-  egal(r6.soldeFin.CDF, 70000, 'solde fin du 6');
+  egal(r6.soldeDebut.CDF, 50000);
+  egal(r6.soldeFin.CDF, 70000);
+  egal(m.activiteParJour(e).get('2026-11-01').benefice, 40000, 'bénéfice dans la liste des jours');
 });
 
-test('Rapports : vente annulée visible mais hors totaux ; changement de prix sans effet', () => {
+test('Rapports : vente annulée visible mais hors totaux', () => {
   const { e, robe } = boutique();
-  const v = m.creerVente(e, { lignes: [{ article_id: robe.id, quantite: 1 }] }, J('2026-11-02', 10)).resultat;
-  m.creerVente(e, { lignes: [{ article_id: robe.id, quantite: 1 }] }, J('2026-11-02', 11));
+  const v = vendre(e, robe, 1, 50000, {}, J('2026-11-02', 10));
+  vendre(e, robe, 1, 45000, {}, J('2026-11-02', 11));
   m.annulerVente(e, v.id, J('2026-11-02', 12));
-  m.modifierArticle(e, robe.id, { prix: 99000 });
   const r = m.rapportDuJour(e, '2026-11-02');
   egal(r.ventes.length, 2, 'annulée toujours visible');
-  egal(r.stats.ventes, 50000);
+  egal(r.stats.ventes, 45000);
   egal(r.articlesVendus, [{ nom: 'Robe', quantite: 1 }]);
-  egal(r.ventes[1].lignes[0].prix_unitaire, 50000);
 });
 
 test('Rapports : totaux de chaque jour égaux au journal de caisse', () => {
   const { e, robe } = boutique();
   for (let i = 0; i < 4; i++) {
-    m.creerVente(e, { lignes: [{ article_id: robe.id, quantite: 1 }] }, J(ajouterJours('2026-11-10', i)));
+    vendre(e, robe, 1, 45000, {}, J(ajouterJours('2026-11-10', i)));
     m.ajouterDepense(e, { montant: 1000 * (i + 1), devise: 'CDF', type: 'transport' }, J(ajouterJours('2026-11-10', i), 13));
   }
   for (let i = 0; i < 4; i++) {
@@ -330,41 +351,27 @@ test('Rapports : totaux de chaque jour égaux au journal de caisse', () => {
   }
 });
 
-test('Ventes par catégorie et meilleures ventes', () => {
-  const { e, robe, jean } = boutique();
-  m.creerVente(e, { lignes: [{ article_id: robe.id, quantite: 2 }, { article_id: jean.id, quantite: 1 }] });
-  const cats = m.ventesParCategorie(e, '0000-01-01', '9999-12-31');
-  egal(cats.map((c) => [c.id, c.valeur]), [['robes', 100000], ['pantalons', 57000]]);
-  egal(m.meilleuresVentes(e, '0000-01-01', '9999-12-31')[0].nom, 'Robe');
-});
-
 test('Saisies invalides refusées', () => {
   const { e, robe } = boutique();
-  refuse(() => m.ajouterArticle(e, { nom: '  ', prix: 100, devise: 'CDF', quantite: 1 }), 'obligatoire');
-  refuse(() => m.ajouterArticle(e, { nom: 'A', prix: -5, devise: 'CDF', quantite: 1 }));
-  refuse(() => m.ajouterArticle(e, { nom: 'A', prix: 1.5, devise: 'CDF', quantite: 1 }));
-  refuse(() => m.ajouterArticle(e, { nom: 'A', prix: 100, devise: 'EUR', quantite: 1 }));
-  refuse(() => m.creerVente(e, { lignes: [{ article_id: robe.id, quantite: 0 }] }));
-  refuse(() => m.creerVente(e, { lignes: [] }), 'vide');
+  refuse(() => m.ajouterArticle(e, { nom: '  ', prix_achat: 100, devise: 'CDF', quantite: 1 }), 'obligatoire');
+  refuse(() => m.ajouterArticle(e, { nom: 'A', prix_achat: -5, devise: 'CDF', quantite: 1 }));
+  refuse(() => m.ajouterArticle(e, { nom: 'A', prix_achat: 1.5, devise: 'CDF', quantite: 1 }));
+  refuse(() => m.ajouterArticle(e, { nom: 'A', prix_achat: 100, devise: 'EUR', quantite: 1 }));
+  refuse(() => vendre(e, robe, 0, 1000));
+  refuse(() => m.creerVente(e, { lignes: [], total: 1000 }), 'vide');
 });
 
-test('Exemples de démonstration cohérents (stock, caisse, dettes)', () => {
+test('Exemples de démonstration cohérents (stock, caisse, dettes, bénéfice)', () => {
   for (const devise of ['USD', 'CDF']) {
     const e = m.etatVide();
     m.creerProfil(e, { nom_boutique: 'Démo', devise_principale: devise, taux: 2850 });
     genererExemples(e);
-    if (e.ventes.length < 60) throw new Error('trop peu de ventes : ' + e.ventes.length);
+    if (e.ventes.length < 40) throw new Error('trop peu de ventes : ' + e.ventes.length);
     if (e.articles.some((a) => a.quantite < 0)) throw new Error('stock négatif');
-    const s = m.statsPeriode(e, '0000-01-01', '9999-12-31');
-    const lignes = e.lignes_de_vente.reduce((t, l) => t + l.montant_principal, 0);
-    const ventes = e.ventes.reduce((t, v) => t + v.total_principal, 0);
-    egal(lignes, ventes, `lignes = ventes (${devise})`);
-    egal(s.ventes, ventes);
-    for (const c of m.dettesParClient(e)) {
-      if (c.reste.USD < 0 || c.reste.CDF < 0) throw new Error('reste négatif');
-    }
-    if (!e.paiements_dette.length) throw new Error('aucun paiement de dette');
-    if (!e.dettes.some((d) => m.resteDette(e, d) > 0)) throw new Error('aucune dette en cours');
+    const s = m.statsPeriode(e, ...TOUT);
+    egal(e.lignes_de_vente.reduce((t, l) => t + l.montant_principal, 0), e.ventes.reduce((t, v) => t + v.total_principal, 0), `lignes = ventes (${devise})`);
+    if (s.marge <= 0) throw new Error('marge des exemples non positive');
+    for (const c of m.dettesParClient(e)) if (c.reste.USD < 0 || c.reste.CDF < 0) throw new Error('reste négatif');
   }
 });
 

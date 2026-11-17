@@ -34,10 +34,10 @@ export async function afficherListe(racine) {
     if (mois < dernierMois) return false;
     const jours = [];
     for (let j = mois === fin.slice(0, 7) ? fin : finDuMois(mois); j.startsWith(mois) && j >= premiere; j = ajouterJours(j, -1)) jours.push(j);
-    const tot = { ventes: 0, encaisse: 0, depenses: 0 };
+    const tot = { ventes: 0, encaisse: 0, depenses: 0, benefice: 0 };
     for (const j of jours) {
       const a = activite.get(j);
-      if (a) { tot.ventes += a.ventes; tot.encaisse += a.encaisse; tot.depenses += a.depenses; }
+      if (a) { tot.ventes += a.ventes; tot.encaisse += a.encaisse; tot.depenses += a.depenses; tot.benefice += a.benefice; }
     }
     zone.append(
       h('div', { class: 'groupe-titre', style: 'margin-top:24px' }, h('h2', { class: 'sous-titre' }, libelleMois(mois))),
@@ -45,7 +45,7 @@ export async function afficherListe(racine) {
         resumeMini('Ventes', tot.ventes, dev),
         resumeMini('Encaissé', tot.encaisse, dev),
         resumeMini('Dépenses', tot.depenses, dev, 'negatif'),
-        resumeMini('Bénéfice', tot.ventes - tot.depenses, dev, tot.ventes - tot.depenses < 0 ? 'negatif' : 'positif')),
+        resumeMini('Bénéfice', tot.benefice, dev, tot.benefice < 0 ? 'negatif' : 'positif')),
       h('div', { class: 'liste' }, ...jours.map((j) => ligneJour(j, activite.get(j), dev))));
     mois = ajouterMois(mois, -1);
     return true;
@@ -131,8 +131,10 @@ export async function afficherJour(racine, cle) {
   const vide = !r.ventes.length && !r.paiements.length && !r.depenses.length;
   racine.append(h('div', { class: 'cartes-stats' },
     stat('Ventes du jour', fm(r.stats.ventes, dev)),
-    stat('Encaissé', fm(r.stats.encaisse, dev), 'positif'),
+    stat('Bénéfice', fm(r.stats.benefice, dev), r.stats.benefice < 0 ? 'negatif' : 'positif'),
+    stat('Encaissé', fm(r.stats.encaisse, dev)),
     stat('Dépenses', fm(r.stats.depenses, dev), 'negatif'),
+    stat('Prix d’achat vendu', fm(r.stats.cout, dev)),
     stat('Nouvelles dettes', fm(r.nouvellesDettesTotal, dev))),
   h('div', { class: 'carte', style: 'margin-top:12px' },
     h('div', { class: 'rangee-espace' },

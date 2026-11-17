@@ -4,7 +4,9 @@
 import { TABLES, etatVide } from './moteur.js';
 
 const NOM_BASE = 'cintre';
-const VERSION_BASE = 1;
+// Version 2 : le prix d'un article devient son prix d'achat et le prix de vente est saisi
+// à la validation. Les données de la version 1 (tests uniquement) sont effacées.
+const VERSION_BASE = 2;
 let promesse = null;
 export let modeMemoire = false; // true si IndexedDB est indisponible (navigation privée très ancienne)
 
@@ -13,9 +15,10 @@ function ouvrir() {
     promesse = new Promise((resoudre, rejeter) => {
       if (!('indexedDB' in self)) { rejeter(new Error('IndexedDB indisponible')); return; }
       const req = indexedDB.open(NOM_BASE, VERSION_BASE);
-      req.onupgradeneeded = () => {
+      req.onupgradeneeded = (evt) => {
         for (const t of TABLES) {
           if (!req.result.objectStoreNames.contains(t)) req.result.createObjectStore(t, { keyPath: 'id' });
+          else if (evt.oldVersion < 2) req.transaction.objectStore(t).clear();
         }
       };
       req.onsuccess = () => resoudre(req.result);
