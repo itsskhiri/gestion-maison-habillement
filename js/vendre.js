@@ -5,7 +5,7 @@
 
 import * as api from './api.js';
 import {
-  h, icone, logo, pastille, boutonProfil, boutonTheme, enTete, fm, fmMulti, fmVente, num, puces, segment, saisie, champ, champMontant,
+  h, icone, logo, pastille, boutonProfil, boutonTheme, enTete, fm, fmMulti, fmVente, num, puces, segment, saisie, saisieLongue, champ, champMontant,
   ouvrirFeuille, confirmer, toast, erreur, vibrer, partager, enCours, etatVide, optionsModes, vider,
 } from './ui.js';
 import { convertir, formater, lireEntier } from './money.js';
@@ -504,7 +504,7 @@ async function feuilleCredit(ctx) {
   let choisi = null; // id d'un client existant
   let modeAcompte = 'cash';
 
-  const nom = saisie({ placeholder: 'Nom du client', autocapitalize: 'words', maxlength: 60, 'aria-label': 'Nom du client' });
+  const nom = saisieLongue({ placeholder: 'Nom du client', autocapitalize: 'words', maxlength: 60, 'aria-label': 'Nom du client' });
   const telephone = saisie({ type: 'tel', inputmode: 'tel', placeholder: 'Téléphone (facultatif)', maxlength: 20, 'aria-label': 'Téléphone du client' });
   const zoneTel = h('div', { hidden: true }, telephone);
   const listeClients = h('div', { class: 'choix-client', role: 'list' });

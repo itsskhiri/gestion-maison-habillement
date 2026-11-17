@@ -2,13 +2,13 @@
 // À l'étape 2, cet écran deviendra « Se connecter / Créer un compte ».
 
 import * as api from './api.js';
-import { h, icone, champ, saisie, segment, erreur, enCours, vibrer } from './ui.js';
+import { h, icone, champ, saisie, saisieLongue, segment, erreur, enCours, vibrer } from './ui.js';
 import { lireEntier } from './money.js';
 import { CONFIG } from '../config.js';
 
 export function afficher(racine) {
   let devise = 'USD';
-  const nom = saisie({ placeholder: 'Ex. Maison Élégance', maxlength: 60, autocapitalize: 'words', 'aria-label': 'Nom de la boutique' });
+  const nom = saisieLongue({ placeholder: 'Ex. Maison Élégance', maxlength: 60, autocapitalize: 'words', 'aria-label': 'Nom de la boutique' });
   const taux = saisie({ inputmode: 'numeric', value: String(CONFIG.tauxParDefaut), 'aria-label': 'Taux du jour en francs pour 1 dollar' });
 
   const lire = () => {

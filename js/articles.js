@@ -3,7 +3,7 @@
 
 import * as api from './api.js';
 import {
-  h, icone, pastille, enTete, puces, saisie, champ, champMontant, ouvrirFeuille, confirmer,
+  h, icone, pastille, enTete, puces, saisie, saisieLongue, champ, champMontant, ouvrirFeuille, confirmer,
   toast, erreur, vibrer, enCours, etatVide, vider,
 } from './ui.js';
 import { lireEntier, formater } from './money.js';
@@ -76,7 +76,7 @@ export async function afficher(racine) {
 
 function formulaire(p, article, { onValider, libelleBouton }) {
   let categorie = article ? article.categorie : derniers.categorie;
-  const nom = saisie({ value: article?.nom ?? '', placeholder: 'Ex. Robe pagne wax M', maxlength: 80, 'aria-label': "Nom de l'article", enterkeyhint: 'next' });
+  const nom = saisieLongue({ value: article?.nom ?? '', placeholder: 'Ex. Robe pagne wax M', maxlength: 80, 'aria-label': "Nom de l'article", enterkeyhint: 'next' });
   const prix = champMontant({ devise: article?.devise ?? derniers.devise ?? p.devise_principale, valeur: article?.prix_achat ?? null, libelle: 'Prix d’achat (une pièce)', aide: 'Le prix de vente sera discuté avec le client au moment de la vente.' });
   const quantite = article ? null : saisie({ inputmode: 'numeric', value: '1', 'aria-label': 'Quantité en stock', enterkeyhint: 'done' });
   const bouton = h('button', { class: 'btn btn-principal btn-bloc btn-grand', type: 'submit' }, libelleBouton);

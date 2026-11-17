@@ -195,6 +195,25 @@ export function saisie(props = {}) {
   return h('input', { class: 'saisie', autocomplete: 'off', autocapitalize: 'sentences', ...props });
 }
 
+// Champ de texte qui s'agrandit sur plusieurs lignes : un nom long reste entièrement visible.
+// La touche Entrée ne crée pas de nouvelle ligne (elle valide le formulaire s'il y en a un).
+export function saisieLongue(props = {}) {
+  const el = h('textarea', { class: 'saisie saisie-longue', rows: 1, autocomplete: 'off', autocapitalize: 'sentences', ...props });
+  const ajuster = () => { el.style.height = 'auto'; el.style.height = `${el.scrollHeight + 2}px`; };
+  el.addEventListener('input', () => {
+    if (/[\r\n]/.test(el.value)) el.value = el.value.replace(/[\r\n]+/g, ' ');
+    ajuster();
+  });
+  el.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    el.form?.requestSubmit();
+  });
+  // Ajuste dès que le champ est affiché (sa largeur est alors connue).
+  new ResizeObserver(ajuster).observe(el);
+  return el;
+}
+
 // Champ montant avec choix de la devise ($ / FC). Renvoie { el, entree, lire(), devise(), definir() }.
 export function champMontant({ devise, valeur = null, libelle = 'Montant', aide, avecDevise = true, onSaisie, onDevise }) {
   let dev = devise;

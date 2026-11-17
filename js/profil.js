@@ -3,7 +3,7 @@
 // Étape 2 : ajout de « Se déconnecter » et « Supprimer mon compte » ; étape 5 : réglages des e-mails.
 
 import * as api from './api.js';
-import { h, icone, enTete, logo, champ, saisie, segment, confirmer, toast, erreur, enCours, telechargerFichier, vibrer } from './ui.js';
+import { h, icone, enTete, logo, champ, saisie, saisieLongue, segment, confirmer, toast, erreur, enCours, telechargerFichier, vibrer } from './ui.js';
 import { lireEntier, formater } from './money.js';
 import { FUSEAUX } from './reference.js';
 import { aujourdhui } from './temps.js';
@@ -18,7 +18,7 @@ export async function afficher(racine) {
   const [p, articles] = await Promise.all([api.profil(), api.listerArticles()]);
   let devise = p.devise_principale;
 
-  const nom = saisie({ value: p.nom_boutique, maxlength: 60, autocapitalize: 'words', 'aria-label': 'Nom de la boutique' });
+  const nom = saisieLongue({ value: p.nom_boutique, maxlength: 60, autocapitalize: 'words', 'aria-label': 'Nom de la boutique' });
   const taux = saisie({ inputmode: 'numeric', value: String(p.taux), 'aria-label': 'Taux : francs pour 1 dollar' });
   const seuil = saisie({ inputmode: 'numeric', value: String(p.seuil_stock_bas), 'aria-label': 'Seuil de stock bas' });
   const fuseau = h('select', { class: 'saisie', 'aria-label': 'Fuseau horaire' },

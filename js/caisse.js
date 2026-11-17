@@ -111,14 +111,14 @@ export async function afficher(racine, { redessin = false } = {}) {
   racine.append(h('section', { class: 'carte' },
     h('div', { class: 'carte-titre' }, h('h2', { class: 'sous-titre' }, 'Meilleures ventes')),
     top.length ? h('div', { class: 'pile-serree' }, ...top.map((t, i) => h('div', { class: 'rangee-espace', style: 'min-height:36px' },
-      h('span', { class: 'rangee', style: 'min-width:0' }, h('span', { class: 'legende num', style: 'width:18px' }, String(i + 1)), h('span', { style: 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap' }, t.nom)),
+      h('span', { class: 'rangee', style: 'min-width:0' }, h('span', { class: 'legende num', style: 'width:18px' }, String(i + 1)), h('span', { style: 'overflow-wrap:anywhere' }, t.nom)),
       h('span', { class: 'num texte-2', style: 'white-space:nowrap' }, `${t.quantite} vendu${t.quantite > 1 ? 's' : ''}`))))
       : h('p', { class: 'texte-2' }, 'Aucune vente sur cette période.')));
 
   racine.append(h('section', { class: 'carte' },
     h('div', { class: 'carte-titre' }, h('h2', { class: 'sous-titre' }, 'Bientôt en rupture'), h('a', { class: 'legende', href: '#/articles' }, 'Articles ›')),
     rupture.length ? h('div', { class: 'pile-serree' }, ...rupture.map((a) => h('div', { class: 'rangee-espace', style: 'min-height:36px' },
-      h('span', { style: 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap' }, a.nom), badgeStock(a, p.seuil_stock_bas))))
+      h('span', { style: 'overflow-wrap:anywhere' }, a.nom), badgeStock(a, p.seuil_stock_bas))))
       : h('p', { class: 'texte-2' }, 'Tout le stock est suffisant.')));
 
   // Journal de caisse
