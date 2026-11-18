@@ -110,6 +110,28 @@ complet demandent HTTPS : utilise plutôt le lien Netlify ci-dessous.
 - Les parcours au toucher et les captures d'écran (375, 390, 430 px, clair et sombre) ont été vérifiés
   avec Playwright sur Edge.
 
+## Serveur Supabase (étape 2)
+
+Projet : `https://lbcrrblgcojrnvmmshyr.supabase.co` (région Francfort). Clé publique dans `config.js`
+(la clé publique est faite pour être visible : la sécurité par ligne protège les données ;
+la clé secrète `service_role` ne doit JAMAIS être dans le code).
+
+1. SQL Editor : exécuter `db/migrations/001_schema.sql` puis `002_fonctions.sql`.
+2. Authentication → Sign In / Providers → Email : « Confirm email » **désactivé pendant la phase de test**
+   (les clients s'inscrivent et entrent directement). À réactiver avec un nom de domaine et un service
+   d'e-mails (Resend) branché dans Authentication → Emails → SMTP Settings.
+3. Authentication → URL Configuration : **Site URL** et **Redirect URLs** = l'adresse Netlify
+   (nécessaire pour le lien « mot de passe oublié »).
+
+Fonctionnement : tout est enregistré d'abord sur le téléphone (marche sans internet) ; chaque opération
+part ensuite dans l'ordre vers le serveur (`appliquer_changements`, une transaction, une seule fois par
+identifiant d'opération). Statut visible dans Profil → Compte.
+
+Vérifié sur le vrai serveur (20 tests) : inscription sans e-mail, deux comptes qui ne voient jamais les
+données l'un de l'autre (lecture et modification refusées), vente et paiement hors-ligne envoyés au retour
+du réseau sans doublon, opération renvoyée deux fois appliquée une fois, paiement supérieur au reste refusé
+par la base, connexion sur un 2e téléphone avec les mêmes chiffres, session conservée, suppression du compte.
+
 ## Mettre en ligne gratuitement (Netlify)
 
 1. Va sur https://app.netlify.com/drop (crée un compte gratuit si besoin).
